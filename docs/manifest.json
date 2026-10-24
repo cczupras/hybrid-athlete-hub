@@ -1,9 +1,20 @@
 {
-    "name": "Hybrid Athlete Hub",
-    "short_name": "HybridHub",
-    "start_url": "./index.html",
-    "display": "standalone",
-    "background_color": "#0f172a",
-    "theme_color": "#10b981",
-    "icons": []
+  "name": "Hybrid Athlete Hub",
+  "short_name": "HybridHub",
+  "description": "Serverless Hybrid-Training Dashboard: Garmin Readiness, Wochen-Kompass, 48h-Ermüdung, Home-Gym Rack Logger & Gemini Coach.",
+  "lang": "de-DE",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }

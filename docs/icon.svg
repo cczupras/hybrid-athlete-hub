@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+    <linearGradient id="accent" x1="16" y1="16" x2="112" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="55%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)" />
+  <rect x="3" y="3" width="122" height="122" rx="25" stroke="url(#accent)" stroke-opacity="0.35" stroke-width="2" />
+  <!-- Barbell -->
+  <g stroke="url(#accent)" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="20" y1="50" x2="108" y2="50" stroke-width="6" />
+    <rect x="26" y="32" width="8" height="36" rx="3" fill="#10b981" stroke-width="2" />
+    <rect x="16" y="38" width="6" height="24" rx="2" fill="#34d399" stroke-width="2" />
+    <rect x="94" y="32" width="8" height="36" rx="3" fill="#10b981" stroke-width="2" />
+    <rect x="106" y="38" width="6" height="24" rx="2" fill="#34d399" stroke-width="2" />
+  </g>
+  <!-- HRV / Pulse Wave -->
+  <path d="M22 88 H44 L53 72 L64 102 L75 64 L84 88 H106" stroke="url(#accent)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+</svg>
