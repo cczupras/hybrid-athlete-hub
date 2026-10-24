@@ -35,8 +35,11 @@ All requests use `POST` with `Content-Type: text/plain;charset=utf-8` to bypass 
   "action": "getDashboard | logStrength | tagActivity | askGemini",
   "data": {}
 }   
+```
+---
 
-4. Implementation Milestones
+## 4. Implementation Milestones
+
 [ ] Step 1: Set up Google Sheet & Script Properties (GARMIN_API_KEY, GEMINI_API_KEY, APP_PIN)
 
 [ ] Step 2: Implement & deploy gas-backend/Code.gs
