@@ -1,1 +1,398 @@
-﻿
+<!DOCTYPE html>
+<html lang="de" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Hybrid Athlete Hub – Readiness, Rack Logger &amp; KI-Coach</title>
+  <meta name="description" content="Hybrid Athlete Hub: Readiness-Ampel aus HRV &amp; Schlaf, Wochen-Kompass für Engine, Heavy &amp; Metcon, Home-Gym Rack Logger mit e1RM und Gemini Hybrid Coach." />
+  <meta name="theme-color" content="#020617" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            display: ['"Space Grotesk"', 'Inter', 'sans-serif']
+          },
+          keyframes: {
+            'fade-up': { '0%': { opacity: 0, transform: 'translateY(8px)' }, '100%': { opacity: 1, transform: 'translateY(0)' } },
+            'pop': { '0%': { transform: 'scale(.9)' }, '60%': { transform: 'scale(1.06)' }, '100%': { transform: 'scale(1)' } },
+            'glow': { '0%,100%': { opacity: .55 }, '50%': { opacity: 1 } }
+          },
+          animation: {
+            'fade-up': 'fade-up .45s ease-out both',
+            'pop': 'pop .35s ease-out',
+            'glow': 'glow 2.4s ease-in-out infinite'
+          }
+        }
+      }
+    };
+  </script>
+  <style type="text/tailwindcss">
+    @layer components {
+      .card { @apply relative rounded-2xl border border-white/[0.06] bg-slate-900/60 backdrop-blur-xl shadow-2xl shadow-black/30 p-4 sm:p-5; }
+      .card-title { @apply font-display text-sm font-semibold uppercase tracking-[0.14em] text-slate-400; }
+      .chip { @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all duration-150 select-none; }
+      .chip-off { @apply border-white/10 bg-white/[0.03] text-slate-300 hover:border-white/20 hover:bg-white/[0.06]; }
+      .chip-on { @apply border-emerald-400/60 bg-emerald-400/15 text-emerald-300 shadow-[0_0_0_3px_rgba(52,211,153,0.08)]; }
+      .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-150 active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none; }
+      .btn-primary { @apply bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 shadow-lg shadow-emerald-500/20 hover:shadow-emerald-400/40 hover:brightness-110; }
+      .btn-ghost { @apply border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08] hover:border-white/20; }
+      .stepper-btn { @apply grid h-14 w-14 sm:h-16 sm:w-16 shrink-0 place-items-center rounded-2xl border border-white/10 bg-slate-800/80 text-3xl font-light text-slate-100 transition-all active:scale-90 active:bg-emerald-500/20 hover:border-emerald-400/40 hover:text-emerald-300 select-none touch-manipulation; }
+      .stepper-btn-sm { @apply grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-slate-800/80 text-xl text-slate-100 transition-all active:scale-90 hover:border-emerald-400/40 hover:text-emerald-300 select-none touch-manipulation; }
+      .input { @apply w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-emerald-400/60 focus:ring-4 focus:ring-emerald-400/10; }
+      .nav-link { @apply flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium text-slate-400 transition-colors; }
+      .nav-link.active { @apply text-emerald-300; }
+    }
+  </style>
+  <style>
+    body { -webkit-tap-highlight-color: transparent; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { scrollbar-width: none; }
+    .tabular { font-variant-numeric: tabular-nums; }
+    input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; }
+    /* RIR Slider */
+    .rir-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 10px; border-radius: 999px; outline: none;
+      background: linear-gradient(90deg, #f43f5e 0%, #f59e0b 40%, #10b981 100%); }
+    .rir-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 30px; height: 30px; border-radius: 999px; background: #f8fafc;
+      border: 4px solid #10b981; box-shadow: 0 0 0 6px rgba(16,185,129,.15), 0 6px 16px rgba(0,0,0,.4); cursor: pointer; }
+    .rir-slider::-moz-range-thumb { width: 26px; height: 26px; border-radius: 999px; background: #f8fafc; border: 4px solid #10b981; cursor: pointer; }
+    /* Typing dots */
+    .dot-typing span { animation: blink 1.2s infinite both; }
+    .dot-typing span:nth-child(2) { animation-delay: .2s; }
+    .dot-typing span:nth-child(3) { animation-delay: .4s; }
+    @keyframes blink { 0%, 80%, 100% { opacity: .2; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .prose table { display: block; overflow-x: auto; }
+    .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  </style>
+</head>
+
+<body class="min-h-screen bg-slate-950 font-sans text-slate-200 antialiased selection:bg-emerald-400/30">
+  <!-- Hintergrund-Glows -->
+  <div aria-hidden="true" class="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+    <div class="absolute -top-40 left-1/2 h-[520px] w-[820px] -translate-x-1/2 rounded-full bg-emerald-500/10 blur-[120px]"></div>
+    <div class="absolute top-1/3 -right-40 h-[420px] w-[420px] rounded-full bg-sky-500/[0.07] blur-[110px]"></div>
+    <div class="absolute bottom-0 -left-40 h-[420px] w-[420px] rounded-full bg-orange-500/[0.06] blur-[110px]"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(rgba(148,163,184,0.06)_1px,transparent_1px)] [background-size:22px_22px]"></div>
+  </div>
+
+  <!-- ============ HEADER ============ -->
+  <header class="sticky top-0 z-40 border-b border-white/[0.06] bg-slate-950/75 backdrop-blur-xl">
+    <div class="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
+      <a href="#overview" class="flex items-center gap-2.5" aria-label="Hybrid Athlete Hub Startseite">
+        <img src="./icon.svg" alt="" class="h-9 w-9 rounded-xl shadow-lg shadow-emerald-500/20" />
+        <div class="leading-tight">
+          <div class="font-display text-[15px] font-bold tracking-tight text-white">Hybrid Athlete Hub</div>
+          <div id="headerDate" class="text-[11px] text-slate-400">–</div>
+        </div>
+      </a>
+
+      <span id="modeBadge" class="ml-1 hidden rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider sm:inline-flex"></span>
+
+      <div class="ml-auto flex items-center gap-2">
+        <div id="headerReadiness" class="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold md:flex"></div>
+        <button id="btnSync" class="btn btn-ghost px-3" title="Garmin Sync">
+          <svg id="syncIcon" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/></svg>
+          <span class="hidden sm:inline">Garmin Sync</span>
+        </button>
+        <button id="btnSettings" class="btn btn-ghost px-3" title="Einstellungen" aria-label="Einstellungen öffnen">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-4 pb-32 pt-5 lg:pb-12">
+    <!-- Hero -->
+    <div class="mb-5 flex flex-wrap items-end justify-between gap-3 animate-fade-up">
+      <div>
+        <p id="greeting" class="text-sm text-slate-400">Willkommen zurück</p>
+        <h1 class="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+          Dein Hybrid-Status <span class="bg-gradient-to-r from-emerald-300 to-teal-200 bg-clip-text text-transparent">heute</span>
+        </h1>
+      </div>
+      <p id="lastUpdated" class="text-xs text-slate-500"></p>
+    </div>
+
+    <!-- ============ OVERVIEW: Readiness · Kompass · Ermüdung ============ -->
+    <section id="overview" aria-label="Tagesübersicht" class="grid scroll-mt-24 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <article id="readinessCard" class="card animate-fade-up"></article>
+      <article id="compassCard" class="card animate-fade-up [animation-delay:60ms]"></article>
+      <article id="fatigueCard" class="card animate-fade-up [animation-delay:120ms] md:col-span-2 xl:col-span-1"></article>
+    </section>
+
+    <div class="mt-6 grid gap-6 lg:grid-cols-12">
+      <!-- ============ QUICK ACTIONS (Mobile first) ============ -->
+      <div class="space-y-6 lg:col-span-5">
+        <!-- Rack Logger -->
+        <section id="logger" aria-labelledby="loggerTitle" class="card scroll-mt-24">
+          <div class="mb-4 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <span class="grid h-9 w-9 place-items-center rounded-xl bg-emerald-400/10 text-emerald-300">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6.5 6v12M17.5 6v12M3.5 9v6M20.5 9v6M6.5 12h11"/></svg>
+              </span>
+              <div>
+                <h2 id="loggerTitle" class="font-display text-lg font-bold text-white">Rack Logger</h2>
+                <p class="text-xs text-slate-400">Home Gym · Langhantel</p>
+              </div>
+            </div>
+            <span id="todaySetCount" class="rounded-full bg-white/5 px-2.5 py-1 text-xs font-semibold text-slate-300">0 Sätze heute</span>
+          </div>
+
+          <!-- Übungsauswahl -->
+          <div id="exerciseChips" class="no-scrollbar -mx-1 mb-4 flex gap-2 overflow-x-auto px-1 pb-1"></div>
+
+          <div id="loggerWarning" class="mb-4 hidden"></div>
+
+          <!-- Gewicht -->
+          <div class="rounded-2xl border border-white/[0.06] bg-slate-950/40 p-3 sm:p-4">
+            <div class="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-slate-400">
+              <span id="weightLabel">Gewicht</span><span class="text-slate-500">± 2,5 kg</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <button id="weightMinus" class="stepper-btn" aria-label="Gewicht minus 2,5 kg">−</button>
+              <div class="flex flex-1 items-baseline justify-center">
+                <input id="weightInput" type="number" inputmode="decimal" step="2.5" min="0" max="500" aria-label="Gewicht in kg"
+                  class="w-full min-w-0 bg-transparent text-center font-display text-5xl font-bold tracking-tight text-white outline-none tabular sm:text-6xl" />
+                <span class="ml-1 text-lg font-semibold text-slate-400">kg</span>
+              </div>
+              <button id="weightPlus" class="stepper-btn" aria-label="Gewicht plus 2,5 kg">+</button>
+            </div>
+            <div class="mt-3 flex justify-center gap-2">
+              <button data-weight-delta="-10" class="chip chip-off">−10</button>
+              <button data-weight-delta="-5" class="chip chip-off">−5</button>
+              <button data-weight-delta="5" class="chip chip-off">+5</button>
+              <button data-weight-delta="10" class="chip chip-off">+10</button>
+            </div>
+            <!-- Plate Calculator -->
+            <div id="plateViz" class="mt-4"></div>
+          </div>
+
+          <!-- Reps & Sätze -->
+          <div class="mt-3 grid grid-cols-2 gap-3">
+            <div class="rounded-2xl border border-white/[0.06] bg-slate-950/40 p-3">
+              <div class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Wdh.</div>
+              <div class="flex items-center justify-between gap-1">
+                <button id="repsMinus" class="stepper-btn-sm" aria-label="Wiederholungen minus">−</button>
+                <input id="repsInput" type="number" inputmode="numeric" min="1" max="50" aria-label="Wiederholungen"
+                  class="w-12 bg-transparent text-center font-display text-3xl font-bold text-white outline-none tabular" />
+                <button id="repsPlus" class="stepper-btn-sm" aria-label="Wiederholungen plus">+</button>
+              </div>
+            </div>
+            <div class="rounded-2xl border border-white/[0.06] bg-slate-950/40 p-3">
+              <div class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Sätze</div>
+              <div class="flex items-center justify-between gap-1">
+                <button id="setsMinus" class="stepper-btn-sm" aria-label="Sätze minus">−</button>
+                <input id="setsInput" type="number" inputmode="numeric" min="1" max="20" aria-label="Sätze"
+                  class="w-12 bg-transparent text-center font-display text-3xl font-bold text-white outline-none tabular" />
+                <button id="setsPlus" class="stepper-btn-sm" aria-label="Sätze plus">+</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIR -->
+          <div class="mt-3 rounded-2xl border border-white/[0.06] bg-slate-950/40 p-3 sm:p-4">
+            <div class="mb-3 flex items-center justify-between">
+              <label for="rirSlider" class="text-xs font-semibold uppercase tracking-wider text-slate-400">Reps in Reserve</label>
+              <span id="rirValue" class="rounded-lg bg-white/5 px-2 py-0.5 text-sm font-bold text-white"></span>
+            </div>
+            <input id="rirSlider" type="range" min="0" max="5" step="1" class="rir-slider" />
+            <div class="mt-2 flex justify-between px-1 text-[11px] font-medium text-slate-500">
+              <span>0 · Max</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5 · Easy</span>
+            </div>
+          </div>
+
+          <!-- e1RM Live -->
+          <div id="e1rmPanel" class="mt-3 overflow-hidden rounded-2xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/10 via-slate-900/40 to-slate-900/40 p-4"></div>
+
+          <button id="btnLogSet" class="btn btn-primary mt-4 w-full py-4 text-base">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            Satz loggen
+          </button>
+
+          <div id="todaySets" class="mt-4 space-y-2"></div>
+        </section>
+
+        <!-- Activity Tagger -->
+        <section id="tagger" aria-labelledby="taggerTitle" class="card scroll-mt-24">
+          <div class="mb-4 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5">
+              <span class="grid h-9 w-9 place-items-center rounded-xl bg-orange-400/10 text-orange-300">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
+              </span>
+              <div>
+                <h2 id="taggerTitle" class="font-display text-lg font-bold text-white">Activity Tagger</h2>
+                <p class="text-xs text-slate-400">Bucket · RPE · Muscle Focus</p>
+              </div>
+            </div>
+            <div class="flex rounded-xl border border-white/10 bg-white/[0.03] p-1 text-xs font-semibold">
+              <button id="filterAll" class="rounded-lg px-2.5 py-1">Alle</button>
+              <button id="filterOpen" class="rounded-lg px-2.5 py-1">Offen <span id="openCount" class="ml-1 rounded-full bg-amber-400/20 px-1.5 text-amber-300">0</span></button>
+            </div>
+          </div>
+          <ul id="activityList" class="space-y-2"></ul>
+        </section>
+      </div>
+
+      <!-- ============ ANALYSE & COACH (Desktop) ============ -->
+      <div class="space-y-6 lg:col-span-7">
+        <section id="analysis" aria-labelledby="analysisTitle" class="scroll-mt-24 space-y-6">
+          <h2 id="analysisTitle" class="sr-only">Analyse</h2>
+          <article class="card">
+            <div class="mb-3 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 class="font-display text-lg font-bold text-white">Recovery vs. Training Load</h3>
+                <p class="text-xs text-slate-400">HRV &amp; Schlaf gegen tägliche Belastung · 14 Tage</p>
+              </div>
+              <div id="loadStats" class="flex gap-2 text-xs"></div>
+            </div>
+            <div class="relative h-64 sm:h-72"><canvas id="chartReadiness" aria-label="Diagramm HRV, Schlaf und Training Load" role="img"></canvas></div>
+          </article>
+
+          <article class="card">
+            <div class="mb-3 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 class="font-display text-lg font-bold text-white">e1RM Kraft-Progression</h3>
+                <p class="text-xs text-slate-400">Epley-Schätzung pro Langhantel-Übung</p>
+              </div>
+              <div id="prBadges" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div id="strengthFilter" class="no-scrollbar -mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1"></div>
+            <div class="relative h-64 sm:h-72"><canvas id="chartStrength" aria-label="Diagramm e1RM Progression" role="img"></canvas></div>
+          </article>
+        </section>
+
+        <!-- Gemini Coach -->
+        <section id="coach" aria-labelledby="coachTitle" class="card scroll-mt-24 overflow-hidden">
+          <div aria-hidden="true" class="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-violet-500/10 blur-3xl"></div>
+          <div class="relative mb-4 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5">
+              <span class="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-violet-500/30 to-emerald-400/30 text-violet-200">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l1.9 5.1 5.1 1.9-5.1 1.9L12 16.5l-1.9-5.1L5 9.5l5.1-1.9z"/><path d="M19 14.5l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9z" opacity=".7"/></svg>
+              </span>
+              <div>
+                <h2 id="coachTitle" class="font-display text-lg font-bold text-white">Gemini Hybrid Coach</h2>
+                <p class="text-xs text-slate-400">gemini-2.5-flash · letzte 10 Tage Kontext</p>
+              </div>
+            </div>
+            <button id="btnClearCoach" class="text-xs font-medium text-slate-500 hover:text-slate-300">Verlauf leeren</button>
+          </div>
+
+          <div id="coachPresets" class="relative mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <button data-preset="today" class="btn btn-ghost justify-start text-left">☀️ Was steht heute an?</button>
+            <button data-preset="rack" class="btn btn-ghost justify-start text-left">🏋️ Rack-Session planen</button>
+            <button data-preset="week" class="btn btn-ghost justify-start text-left">📊 Wochen-Analyse</button>
+          </div>
+
+          <div id="coachMessages" class="relative max-h-[560px] min-h-[160px] space-y-4 overflow-y-auto pr-1" aria-live="polite"></div>
+
+          <form id="coachForm" class="relative mt-4 flex items-end gap-2">
+            <label for="coachInput" class="sr-only">Frage an den Coach</label>
+            <textarea id="coachInput" rows="1" placeholder="Frag deinen Coach… z. B. „Kann ich morgen Deadlifts machen?“"
+              class="input max-h-40 min-h-[46px] resize-none"></textarea>
+            <button id="coachSend" type="submit" class="btn btn-primary h-[46px] w-[46px] shrink-0 p-0" aria-label="Senden">
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4z"/></svg>
+            </button>
+          </form>
+        </section>
+      </div>
+    </div>
+
+    <footer class="mt-10 text-center text-xs text-slate-600">
+      Hybrid Athlete Hub · Google Sheets + Apps Script + Garmin + Gemini
+    </footer>
+  </main>
+
+  <!-- ============ MOBILE BOTTOM NAV ============ -->
+  <nav id="bottomNav" aria-label="Schnellnavigation" class="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.06] bg-slate-950/85 backdrop-blur-xl lg:hidden">
+    <div class="mx-auto flex max-w-md">
+      <a href="#overview" data-nav="overview" class="nav-link active">
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Heute
+      </a>
+      <a href="#logger" data-nav="logger" class="nav-link">
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6.5 6v12M17.5 6v12M3.5 9v6M20.5 9v6M6.5 12h11"/></svg>Rack
+      </a>
+      <a href="#tagger" data-nav="tagger" class="nav-link">
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>Tagger
+      </a>
+      <a href="#analysis" data-nav="analysis" class="nav-link">
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg>Analyse
+      </a>
+      <a href="#coach" data-nav="coach" class="nav-link">
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l1.9 5.1 5.1 1.9-5.1 1.9L12 16.5l-1.9-5.1L5 9.5l5.1-1.9z"/></svg>Coach
+      </a>
+    </div>
+  </nav>
+
+  <!-- ============ SETTINGS MODAL ============ -->
+  <div id="settingsModal" class="fixed inset-0 z-50 hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div data-close-settings class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"></div>
+    <div class="absolute inset-x-0 bottom-0 mx-auto w-full max-w-lg animate-fade-up rounded-t-3xl border border-white/10 bg-slate-900 p-5 shadow-2xl sm:bottom-auto sm:top-[10vh] sm:rounded-3xl sm:p-6">
+      <div class="mb-5 flex items-center justify-between">
+        <div>
+          <h2 id="settingsTitle" class="font-display text-xl font-bold text-white">Einstellungen</h2>
+          <p class="text-xs text-slate-400">Werte werden nur lokal in diesem Browser gespeichert.</p>
+        </div>
+        <button data-close-settings class="grid h-9 w-9 place-items-center rounded-xl text-slate-400 hover:bg-white/5 hover:text-white" aria-label="Schließen">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label for="gasUrlInput" class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">GAS Web App URL</label>
+          <input id="gasUrlInput" type="url" class="input" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false" />
+        </div>
+        <div>
+          <label for="appPinInput" class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">App PIN</label>
+          <div class="relative">
+            <input id="appPinInput" type="password" class="input pr-12" placeholder="Shared Secret aus den Script Properties" autocomplete="off" />
+            <button id="togglePin" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-xs font-semibold text-slate-400 hover:text-white">Zeigen</button>
+          </div>
+        </div>
+
+        <label for="mockToggle" class="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-white/[0.06] bg-slate-950/40 p-4">
+          <div>
+            <div class="text-sm font-semibold text-white">Demo-/Mock-Modus erzwingen</div>
+            <div class="text-xs text-slate-400">Automatisch aktiv, solange keine GAS_URL hinterlegt ist.</div>
+          </div>
+          <span class="relative inline-flex">
+            <input id="mockToggle" type="checkbox" class="peer sr-only" />
+            <span class="h-7 w-12 rounded-full bg-slate-700 transition peer-checked:bg-emerald-500"></span>
+            <span class="absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span>
+          </span>
+        </label>
+
+        <div id="settingsStatus" class="hidden rounded-xl px-3 py-2 text-xs"></div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <button id="btnTestConnection" class="btn btn-ghost">Verbindung testen</button>
+          <button id="btnInitSheets" class="btn btn-ghost">Sheets initialisieren</button>
+        </div>
+        <button id="btnSaveSettings" class="btn btn-primary w-full py-3">Speichern &amp; neu laden</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toasts -->
+  <div id="toasts" class="pointer-events-none fixed inset-x-0 top-20 z-[60] mx-auto flex max-w-sm flex-col items-center gap-2 px-4"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
