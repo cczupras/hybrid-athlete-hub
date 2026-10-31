@@ -46,6 +46,9 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(request)
       .then((response) => {
+        if (response && response.status >= 500) {
+          return caches.match(request).then((cachedResponse) => cachedResponse || response);
+        }
         if (response && response.status === 200 && (response.type === 'basic' || response.type === 'cors')) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
