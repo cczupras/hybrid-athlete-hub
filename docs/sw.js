@@ -39,6 +39,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
+  if (url.pathname.endsWith('/version.json')) return;
   if (url.hostname.includes('script.google')) return;
 
   event.respondWith(
