@@ -638,6 +638,12 @@ function computeTodayReadiness_(metricsAsc, today) {
   var prev = metricsAsc.slice(Math.max(0, metricsAsc.length - 8), metricsAsc.length - 1);
   var rhrVals = prev.map(function (m) { return toNumber_(m.Resting_HR); }).filter(function (v) { return v !== null; });
   var rhrBaseline = rhrVals.length ? rhrVals.reduce(function (a, b) { return a + b; }, 0) / rhrVals.length : null;
+  // Neuester Tag hat oft noch keinen Ruhepuls → letzten vorhandenen Wert verwenden
+  var restingHr = toNumber_(latest.Resting_HR);
+  for (var i = metricsAsc.length - 1; (restingHr === null || restingHr <= 0) && i >= 0; i--) {
+    var cand = toNumber_(metricsAsc[i].Resting_HR);
+    if (cand !== null && cand > 0) restingHr = cand;
+  }
   var status = latest.Readiness_Status || computeReadiness(latest, rhrBaseline);
   return {
     status: status,
@@ -646,7 +652,7 @@ function computeTodayReadiness_(metricsAsc, today) {
     sleepScore: toNumber_(latest.Sleep_Score),
     hrvNight: toNumber_(latest.HRV_Night),
     hrv7dAvg: toNumber_(latest.HRV_7d_Avg),
-    restingHr: toNumber_(latest.Resting_HR),
+    restingHr: restingHr,
     rhrBaseline: rhrBaseline === null ? null : Math.round(rhrBaseline * 10) / 10,
     bodyBatteryMax: toNumber_(latest.Body_Battery_Max)
   };
