@@ -670,6 +670,24 @@ function renderHeader() {
   pill.innerHTML = `<span class="relative flex h-2.5 w-2.5"><span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style="background:${meta.hex}"></span><span class="relative inline-flex h-2.5 w-2.5 rounded-full" style="background:${meta.hex}"></span></span>Readiness: ${meta.label}`;
 }
 
+async function loadBuildInfo() {
+  const label = $('#headerBuild');
+  try {
+    const response = await fetch('./version.json', { cache: 'no-store' });
+    if (!response.ok) throw new Error('Build-Version konnte nicht geladen werden');
+    const build = await response.json();
+    const builtAt = new Date(build.builtAt);
+    const version = Number(build.version);
+    if (!Number.isInteger(version) || version < 1 || !Number.isFinite(builtAt.getTime())) {
+      throw new Error('Ungültige Build-Version');
+    }
+    label.textContent = `Version ${version} · ${builtAt.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}`;
+    label.title = builtAt.toISOString();
+  } catch (error) {
+    label.textContent = 'Build-Version nicht verfügbar';
+  }
+}
+
 function renderReadiness() {
   const r = state.derived.readiness;
   const meta = READINESS_META[r.status] || READINESS_META[''];
@@ -1488,6 +1506,7 @@ function registerServiceWorker() {
 document.addEventListener('DOMContentLoaded', () => {
   setupChartDefaults();
   setupMarked();
+  loadBuildInfo();
   renderSkeletons();
   bindEvents();
   renderCoach();

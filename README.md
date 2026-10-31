@@ -105,10 +105,9 @@ Damit deine Schlaf-, HRV-, Ruhepuls- und Aktivitätsdaten jeden Morgen automatis
 #### Option A: Hosting auf GitHub Pages (empfohlen fürs Smartphone im Home Gym)
 1. Pushe dieses Repository auf GitHub.
 2. Öffne auf GitHub **Settings → Pages**.
-3. Stelle unter **Build and deployment** ein:
-   - **Source:** `Deploy from a branch`
-   - **Branch:** `main` und Ordner **`/docs`** → **Save**.
-4. Öffne die veröffentlichte GitHub-Pages-URL im Browser (oder füge sie auf iOS via *Teilen → Zum Home-Bildschirm* bzw. auf Android via *App installieren* als Vollbild-PWA hinzu).
+3. Stelle unter **Build and deployment** als **Source** `GitHub Actions` ein.
+4. Der Workflow veröffentlicht jeden Push auf `main` automatisch. Die App zeigt im Header die fortlaufende Build-Nummer und Datum/Uhrzeit; ein neuer Build aktualisiert auch den PWA-Cache.
+5. Öffne die veröffentlichte GitHub-Pages-URL im Browser (oder füge sie auf iOS via *Teilen → Zum Home-Bildschirm* bzw. auf Android via *App installieren* als Vollbild-PWA hinzu).
 
 #### Option B: Lokal starten
 Da das Frontend keinen Build-Step benötigt, reicht jeder beliebige statische HTTP-Server für den Ordner `docs/`:
