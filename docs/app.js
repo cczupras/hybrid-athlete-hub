@@ -144,11 +144,14 @@ const Analytics = {
     const idx = metricsAsc.length - 1;
     const m = metricsAsc[idx];
     const baseline = this.rhrBaseline(metricsAsc, idx);
+    // Der neueste Tag hat oft noch keinen Ruhepuls (Garmin liefert ihn verzögert) → letzten vorhandenen Wert nutzen
+    const lastRhr = [...metricsAsc].reverse().map((x) => num(x.Resting_HR)).find((v) => v !== null && v > 0);
+    const restingHr = num(m.Resting_HR) > 0 ? num(m.Resting_HR) : (lastRhr ?? null);
     return {
       status: m.Readiness_Status || this.readiness(m, baseline),
       date: m.Date, isToday: m.Date === today,
       sleepScore: num(m.Sleep_Score), hrvNight: num(m.HRV_Night), hrv7dAvg: num(m.HRV_7d_Avg),
-      restingHr: num(m.Resting_HR), rhrBaseline: baseline === null ? null : round1(baseline),
+      restingHr, rhrBaseline: baseline === null ? null : round1(baseline),
       bodyBatteryMax: num(m.Body_Battery_Max)
     };
   },
@@ -986,7 +989,7 @@ function activityItem(a) {
   const b = BUCKETS[a.Bucket];
   const t = TYPE_META[a.Type] || TYPE_META.Other;
   const untagged = Analytics.isUntagged(a);
-  const expanded = state.expandedId === a.Activity_ID;
+  const expanded = state.expandedId === String(a.Activity_ID);
   const rpe = num(a.RPE);
   const meta = [relDay(a.Date), a.Duration_Min ? `${a.Duration_Min} min` : null, num(a.Garmin_Load) ? `Load ${a.Garmin_Load}` : null, num(a.Avg_HR) ? `Ø ${a.Avg_HR} bpm` : null].filter(Boolean).join(' · ');
   const rgb = b ? b.rgb : '148,163,184';
@@ -1050,10 +1053,10 @@ function tagEditor(a) {
 }
 
 function toggleActivity(id) {
-  if (state.expandedId === id) { state.expandedId = null; renderTagger(); return; }
-  const a = state.derived.activities.find((x) => x.Activity_ID === id);
+  if (state.expandedId === String(id)) { state.expandedId = null; renderTagger(); return; }
+  const a = state.derived.activities.find((x) => String(x.Activity_ID) === String(id));
   if (!a) return;
-  state.expandedId = id;
+  state.expandedId = String(id);
   state.draft = { bucket: a.Bucket || '', rpe: num(a.RPE), focus: a.Muscle_Focus || Analytics.defaultFocus(a), notes: a.Notes || '' };
   renderTagger();
 }
@@ -1066,9 +1069,9 @@ async function saveActivityTag(id, btn) {
   btn.disabled = true;
   btn.textContent = 'Speichere…';
   try {
-    const res = await api('tagActivity', { activityId: id, bucket: d.bucket, rpe: d.rpe, muscleFocus: d.focus, notes: d.notes });
+    const res = await api('tagActivity', { activityId: String(id), bucket: d.bucket, rpe: d.rpe, muscleFocus: d.focus, notes: d.notes });
     const updated = res.activity || {};
-    state.data.activities = (state.data.activities || []).map((a) => (a.Activity_ID === id ? { ...a, ...updated, Bucket: d.bucket, RPE: d.rpe, Muscle_Focus: d.focus, Notes: d.notes } : a));
+    state.data.activities = (state.data.activities || []).map((a) => (String(a.Activity_ID) === String(id) ? { ...a, ...updated, Bucket: d.bucket, RPE: d.rpe, Muscle_Focus: d.focus, Notes: d.notes } : a));
     state.derived = buildDerived(state.data);
     state.expandedId = null;
     vibrate(12);

@@ -214,7 +214,7 @@ function garminFetch_(kind, token, win) {
 function mapGarminDaily_(d, fallbackDate) {
   return {
     Date: pickDate_(d, fallbackDate),
-    Resting_HR: pick_(d, ['restingHeartRateInBeatsPerMinute', 'restingHeartRate', 'restingHR']),
+    Resting_HR: pick_(d, ['restingHeartRateInBeatsPerMinute', 'restingHeartRate', 'restingHR', 'restingHeartRateValue', 'averageRestingHeartRate']),
     Body_Battery_Max: pick_(d, ['bodyBatteryHighestValue', 'bodyBatteryChargedValue', 'maxBodyBattery', 'bodyBatteryMax'])
   };
 }

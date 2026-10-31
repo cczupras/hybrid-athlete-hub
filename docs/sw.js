@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  *  Hybrid Athlete Hub – Service Worker (docs/sw.js)
- *  - App-Shell-Caching (Stale-While-Revalidate) für schnellen Offline-Start im Home Gym
+ *  - App-Shell-Caching (Network-first mit Cache-Fallback) für schnellen Offline-Start im Home Gym
  *  - POST-Requests an Google Apps Script werden niemals gecacht (immer direkt ans Netz)
  * ============================================================================
  */
@@ -42,19 +42,16 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.endsWith('/version.json')) return;
   if (url.hostname.includes('script.google')) return;
 
+  // Network-first: verhindert, dass eine veraltete app.js/index.html aus dem Cache ausgeliefert wird
   event.respondWith(
-    caches.match(request).then((cached) => {
-      const networkFetch = fetch(request)
-        .then((response) => {
-          if (response && response.status === 200 && (response.type === 'basic' || response.type === 'cors')) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return response;
-        })
-        .catch(() => cached);
-
-      return cached || networkFetch;
-    })
+    fetch(request)
+      .then((response) => {
+        if (response && response.status === 200 && (response.type === 'basic' || response.type === 'cors')) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(request))
   );
 });
