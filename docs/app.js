@@ -974,7 +974,7 @@ function activityItem(a) {
   const rgb = b ? b.rgb : '148,163,184';
   return `
   <li class="overflow-hidden rounded-2xl border transition-colors ${expanded ? 'border-emerald-400/30 bg-slate-950/60' : 'border-white/[0.06] bg-slate-950/30 hover:border-white/15'}">
-    <button data-act-toggle="${escapeHtml(a.Activity_ID)}" class="flex w-full items-center gap-3 p-3 text-left" aria-expanded="${expanded}">
+    <button type="button" data-act-toggle="${escapeHtml(a.Activity_ID)}" class="flex w-full items-center gap-3 p-3 text-left" aria-expanded="${expanded}">
       <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-xl" style="background:rgba(${rgb},.12);box-shadow:inset 0 0 0 1px rgba(${rgb},.25)">${t.icon}</span>
       <span class="min-w-0 flex-1">
         <span class="flex items-center gap-2">
@@ -1002,7 +1002,7 @@ function tagEditor(a) {
         <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Bucket</div>
         <div class="grid grid-cols-3 gap-2">
           ${Object.entries(BUCKETS).map(([k, b]) => `
-            <button data-draft-bucket="${k}" class="rounded-xl border px-2 py-2.5 text-sm font-semibold transition active:scale-95 ${d.bucket === k ? b.text : 'border-white/10 text-slate-300 hover:bg-white/5'}"
+            <button type="button" data-draft-bucket="${k}" class="rounded-xl border px-2 py-2.5 text-sm font-semibold transition active:scale-95 ${d.bucket === k ? b.text : 'border-white/10 text-slate-300 hover:bg-white/5'}"
               style="${d.bucket === k ? `border-color:rgba(${b.rgb},.6);background:rgba(${b.rgb},.15)` : ''}">${b.icon} ${b.label}</button>`).join('')}
         </div>
       </div>
@@ -1010,14 +1010,14 @@ function tagEditor(a) {
         <div class="mb-1.5 flex justify-between text-[11px] font-semibold uppercase tracking-wider text-slate-500"><span>RPE</span><span class="normal-case tracking-normal text-slate-300">${d.rpe ? `${d.rpe} · ${rpeDesc[d.rpe]}` : 'wählen'}</span></div>
         <div class="grid grid-cols-10 gap-1">
           ${Array.from({ length: 10 }, (_, i) => i + 1).map((n) => `
-            <button data-draft-rpe="${n}" class="h-10 rounded-lg text-sm font-bold transition active:scale-90 ${d.rpe === n ? 'text-slate-950' : 'text-slate-300'}"
+            <button type="button" data-draft-rpe="${n}" class="h-10 rounded-lg text-sm font-bold transition active:scale-90 ${d.rpe === n ? 'text-slate-950' : 'text-slate-300'}"
               style="background:rgba(${rpeColor(n)},${d.rpe === n ? '1' : '.1'});box-shadow:inset 0 0 0 1px rgba(${rpeColor(n)},.35)">${n}</button>`).join('')}
         </div>
       </div>
       <div>
         <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Muscle Focus</div>
         <div class="flex flex-wrap gap-1.5">
-          ${Object.entries(MUSCLE_FOCUS).map(([k, label]) => `<button data-draft-focus="${k}" class="chip ${d.focus === k ? 'chip-on' : 'chip-off'}">${label}</button>`).join('')}
+          ${Object.entries(MUSCLE_FOCUS).map(([k, label]) => `<button type="button" data-draft-focus="${k}" class="chip ${d.focus === k ? 'chip-on' : 'chip-off'}">${label}</button>`).join('')}
         </div>
       </div>
       <div>
@@ -1025,8 +1025,8 @@ function tagEditor(a) {
         <input id="draftNotes" class="input" maxlength="500" value="${escapeHtml(d.notes ?? '')}" placeholder="z. B. WOD-Name, Gefühl, Skalierung" />
       </div>
       <div class="flex gap-2">
-        <button data-act-save="${escapeHtml(a.Activity_ID)}" class="btn btn-primary flex-1">Speichern</button>
-        <button data-act-cancel class="btn btn-ghost">Abbrechen</button>
+        <button type="button" data-act-save="${escapeHtml(a.Activity_ID)}" class="btn btn-primary flex-1">Speichern</button>
+        <button type="button" data-act-cancel class="btn btn-ghost">Abbrechen</button>
       </div>
     </div>`;
 }
