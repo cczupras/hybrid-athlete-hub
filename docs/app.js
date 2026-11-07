@@ -608,6 +608,7 @@ const state = {
   loggerInitialized: false,
   taggerFilter: 'all',
   expandedId: null,
+  activityModalOpener: null,
   draft: {},
   hiddenExercises: new Set(['Front Squat', 'Weighted Pull-Up']),
   prLogIds: new Set(),
@@ -1020,8 +1021,8 @@ function activityItem(a) {
           <span class="text-[11px] tabular ${rpe ? 'text-slate-300' : 'text-slate-600'}">RPE ${rpe ?? '–'}${a.Muscle_Focus ? ` · ${MUSCLE_FOCUS[a.Muscle_Focus] || a.Muscle_Focus}` : ''}</span>
         </span>
       </span>
-      ${comment ? `<div class="prose prose-invert prose-xs mt-2 max-h-20 max-w-none overflow-hidden rounded-xl border border-white/[0.05] bg-slate-950/60 px-3 py-2 text-xs text-slate-300 prose-p:my-0.5 prose-ul:my-0.5 prose-li:my-0 prose-headings:my-0.5 prose-headings:text-xs prose-strong:text-white">${renderMarkdown(comment)}</div>` : ''}
     </button>
+    ${comment ? `<div class="prose prose-invert prose-xs mt-2 max-h-20 max-w-none overflow-hidden rounded-xl border border-white/[0.05] bg-slate-950/60 px-3 py-2 text-xs text-slate-300 prose-p:my-0.5 prose-ul:my-0.5 prose-li:my-0 prose-headings:my-0.5 prose-headings:text-xs prose-strong:text-white">${renderMarkdown(comment)}</div>` : ''}
   </li>`;
 }
 
@@ -1033,9 +1034,10 @@ function syncDraftInputs() {
   if (commentEl) state.draft.comment = commentEl.value;
 }
 
-function openActivityModal(id) {
+function openActivityModal(id, opener = document.activeElement) {
   const a = state.derived.activities.find((x) => String(x.Activity_ID) === String(id));
   if (!a) return;
+  state.activityModalOpener = opener;
   state.expandedId = String(id);
   state.draft = {
     bucket: a.Bucket || '',
@@ -1048,17 +1050,28 @@ function openActivityModal(id) {
   renderActivityModal();
   $('#activityModal').classList.remove('hidden');
   document.body.style.overflow = 'hidden';
+  $('#draftNotes').focus();
 }
 
 function closeActivityModal() {
+  const opener = state.activityModalOpener;
+  const activityId = state.expandedId;
+  state.activityModalOpener = null;
   state.expandedId = null;
   $('#activityModal').classList.add('hidden');
   if ($('#settingsModal').classList.contains('hidden')) document.body.style.overflow = '';
+  const currentOpener = opener?.isConnected ? opener
+    : $$('#activityList [data-act-open]').find((button) => button.dataset.actOpen === activityId);
+  if (currentOpener) currentOpener.focus();
 }
 
 function renderActivityModal() {
   const a = state.derived?.activities.find((x) => String(x.Activity_ID) === String(state.expandedId));
   if (!a) return;
+  const active = document.activeElement;
+  const focusAttributes = ['data-draft-bucket', 'data-draft-rpe', 'data-draft-focus', 'data-draft-tab', 'data-close-activity'];
+  const focusAttribute = $('#activityModal').contains(active) && focusAttributes.find((attribute) => active.hasAttribute(attribute));
+  const focusValue = focusAttribute ? active.getAttribute(focusAttribute) : null;
   const d = state.draft;
   const t = TYPE_META[a.Type] || TYPE_META.Other;
   const b = BUCKETS[d.bucket] || BUCKETS[a.Bucket];
@@ -1136,6 +1149,11 @@ function renderActivityModal() {
         <button type="button" data-close-activity class="btn btn-ghost py-3">Abbrechen</button>
       </div>
     </div>`;
+  if (focusAttribute) {
+    const focusTarget = $$(`[${focusAttribute}]`, $('#activityModalContent'))
+      .find((element) => element.getAttribute(focusAttribute) === focusValue);
+    if (focusTarget) focusTarget.focus();
+  }
 }
 
 async function saveActivityTag(id, btn) {
@@ -1295,11 +1313,30 @@ const COACH_PRESET_LABELS = { today: '☀️ Was steht heute an?', rack: '🏋�
 
 function setupMarked() {
   if (!window.marked) return;
-  // Rohes HTML aus der KI-Antwort wird escaped (XSS-Schutz ohne zusätzliche Library)
+  // Rohes HTML wird escaped; Linkziele dürfen nur sichere URL-Schemata verwenden.
   marked.use({
     gfm: true, breaks: true,
-    renderer: { html(token) { return escapeHtml(typeof token === 'string' ? token : (token && token.text) || ''); } }
+    renderer: {
+      html(token) { return escapeHtml(typeof token === 'string' ? token : (token && token.text) || ''); },
+      link(href, linkTitle, text) {
+        const safeHref = safeMarkdownUrl(href);
+        if (safeHref === null) return text;
+        const title = linkTitle ? ` title="${escapeHtml(linkTitle)}"` : '';
+        return `<a href="${escapeHtml(safeHref)}"${title}>${text}</a>`;
+      },
+      image(href, imageTitle, text) { return escapeHtml(text); }
+    }
   });
+}
+function safeMarkdownUrl(href) {
+  const value = String(href ?? '').trim();
+  if (!value || /[\u0000-\u001f\u007f]/.test(value)) return null;
+  try {
+    const protocol = new URL(value, document.baseURI).protocol.toLowerCase();
+    return ['http:', 'https:', 'mailto:', 'tel:'].includes(protocol) ? value : null;
+  } catch (_) {
+    return null;
+  }
 }
 function renderMarkdown(md) {
   if (!window.marked) return `<pre class="whitespace-pre-wrap">${escapeHtml(md)}</pre>`;
@@ -1495,8 +1532,26 @@ function bindEvents() {
   // Settings
   $$('[data-close-settings]').forEach((el) => el.addEventListener('click', closeSettings));
   document.addEventListener('keydown', (e) => {
+    const activityModal = $('#activityModal');
+    if (!activityModal.classList.contains('hidden') && e.key === 'Tab') {
+      const focusable = $$('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])', activityModal)
+        .filter((element) => element.getClientRects().length);
+      if (!focusable.length) {
+        e.preventDefault();
+        activityModal.focus();
+      } else {
+        const first = focusable[0], last = focusable[focusable.length - 1];
+        if (e.shiftKey && (document.activeElement === first || !activityModal.contains(document.activeElement))) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && (document.activeElement === last || !activityModal.contains(document.activeElement))) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    }
     if (e.key !== 'Escape') return;
-    if (!$('#activityModal').classList.contains('hidden')) closeActivityModal();
+    if (!activityModal.classList.contains('hidden')) closeActivityModal();
     else if (!$('#settingsModal').classList.contains('hidden')) closeSettings();
   });
   $('#togglePin').addEventListener('click', () => {
@@ -1536,7 +1591,7 @@ function bindEvents() {
   $('#filterOpen').addEventListener('click', () => { state.taggerFilter = 'open'; renderTagger(); });
   $('#activityList').addEventListener('click', (e) => {
     const t = e.target.closest('button[data-act-open]');
-    if (t) { vibrate(6); openActivityModal(t.dataset.actOpen); }
+    if (t) { vibrate(6); openActivityModal(t.dataset.actOpen, t); }
   });
   $('#activityModal').addEventListener('input', (e) => {
     if (e.target.id === 'draftNotes') {

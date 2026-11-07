@@ -302,8 +302,10 @@ var RESTING_HR_PATHS = [
  */
 function extractRestingHr_(obj) {
   var valid = function (v) { var n = toNumber_(v); return (n !== null && n >= 25 && n <= 140) ? Math.round(n) : null; };
-  var direct = valid(pick_(obj, RESTING_HR_PATHS));
-  if (direct !== null) return direct;
+  for (var i = 0; i < RESTING_HR_PATHS.length; i++) {
+    var direct = valid(pick_(obj, [RESTING_HR_PATHS[i]]));
+    if (direct !== null) return direct;
+  }
 
   var found = null;
   var walk = function (node, depth) {
