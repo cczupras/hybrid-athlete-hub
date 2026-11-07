@@ -145,13 +145,14 @@ const Analytics = {
     const m = metricsAsc[idx];
     const baseline = this.rhrBaseline(metricsAsc, idx);
     // Der neueste Tag hat oft noch keinen Ruhepuls (Garmin liefert ihn verzögert) → letzten vorhandenen Wert nutzen
-    const lastRhr = [...metricsAsc].reverse().map((x) => num(x.Resting_HR)).find((v) => v !== null && v > 0);
-    const restingHr = num(m.Resting_HR) > 0 ? num(m.Resting_HR) : (lastRhr ?? null);
+    const lastRhrRow = [...metricsAsc].reverse().find((x) => num(x.Resting_HR) > 0);
+    const restingHr = num(m.Resting_HR) > 0 ? num(m.Resting_HR) : (lastRhrRow ? num(lastRhrRow.Resting_HR) : null);
+    const restingHrDate = num(m.Resting_HR) > 0 ? m.Date : (lastRhrRow ? lastRhrRow.Date : null);
     return {
       status: m.Readiness_Status || this.readiness(m, baseline),
       date: m.Date, isToday: m.Date === today,
       sleepScore: num(m.Sleep_Score), hrvNight: num(m.HRV_Night), hrv7dAvg: num(m.HRV_7d_Avg),
-      restingHr, rhrBaseline: baseline === null ? null : round1(baseline),
+      restingHr, restingHrDate, rhrBaseline: baseline === null ? null : round1(baseline),
       bodyBatteryMax: num(m.Body_Battery_Max)
     };
   },
@@ -297,7 +298,8 @@ function buildMockDb() {
   // --- Activities (letzte 14 Tage) ---
   const A = (daysAgo, o) => ({
     Activity_ID: o.id || gid(), Date: d(daysAgo), Source: o.src || 'Garmin', Bucket: o.bucket || '', Type: o.type,
-    Duration_Min: o.dur ?? '', Garmin_Load: o.load ?? '', Avg_HR: o.hr ?? '', RPE: o.rpe ?? '', Muscle_Focus: o.focus ?? '', Notes: o.notes ?? ''
+    Duration_Min: o.dur ?? '', Garmin_Load: o.load ?? '', Avg_HR: o.hr ?? '', RPE: o.rpe ?? '', Muscle_Focus: o.focus ?? '',
+    Notes: o.notes ?? '', Comment: o.comment ?? ''
   });
   const rack = (daysAgo, dur, rpe, hr) => A(daysAgo, {
     id: rackId(d(daysAgo)), src: 'Manual', bucket: 'Heavy', type: 'Rack_Strength', dur, hr, rpe,
@@ -306,7 +308,8 @@ function buildMockDb() {
   const activities = [
     A(13, { bucket: 'Engine', type: 'Run', dur: 52, load: 78, hr: 142, rpe: 4, focus: 'Cardio_Z2', notes: 'Easy Run 9,4 km' }),
     rack(12, 68, 8, 108),
-    A(11, { bucket: 'Metcon', type: 'CrossFit', dur: 60, load: 165, hr: 158, rpe: 9, focus: 'Full_Body', notes: 'WOD „Fran“ – Thrusters & Pull-Ups' }),
+    A(11, { bucket: 'Metcon', type: 'CrossFit', dur: 60, load: 165, hr: 158, rpe: 9, focus: 'Full_Body', notes: 'WOD „Fran“ – Thrusters & Pull-Ups',
+      comment: '**21-15-9** for time (4:48 min)\n- Thrusters @ 42,5 kg (unbroken / 10+5 / 9)\n- Pull-Ups (Butterfly)' }),
     A(10, { bucket: 'Engine', type: 'Bike', dur: 85, load: 110, hr: 136, rpe: 5, focus: 'Cardio_Z2', notes: 'Z2 Ride 42 km' }),
     rack(9, 62, 8, 112),
     A(7, { bucket: 'Engine', type: 'Run', dur: 82, load: 142, hr: 148, rpe: 6, focus: 'Cardio_Z2', notes: 'Long Run 15,1 km' }),
@@ -315,7 +318,8 @@ function buildMockDb() {
     A(4, { bucket: 'Metcon', type: 'CrossFit', dur: 55, load: 150, hr: 152, focus: 'Full_Body', notes: 'HIIT (Garmin)' }),
     rack(3, 58, 7, 106),
     A(2, { bucket: 'Engine', type: 'Run', dur: 48, load: 132, hr: 162, focus: 'Cardio_High', notes: 'Tempo Run 10 km' }),
-    A(1, { bucket: 'Metcon', type: 'CrossFit', dur: 60, load: 158, hr: 156, rpe: 9, focus: 'Full_Body', notes: 'WOD 21-15-9 Thrusters & Wall Balls' })
+    A(1, { bucket: 'Metcon', type: 'CrossFit', dur: 60, load: 158, hr: 156, rpe: 9, focus: 'Full_Body', notes: 'WOD 21-15-9 Thrusters & Wall Balls',
+      comment: '- **Kraftteil:** Front Squat 4×3 @ 95 kg\n- **Metcon:** 21-15-9 Thrusters (40 kg) & Wall Balls (9 kg) → *Beine komplett zu*' })
   ];
 
   // Wird erst beim ersten "Garmin Sync" importiert (demonstriert Upsert)
@@ -377,12 +381,13 @@ const MockBackend = {
       }
       case 'tagActivity': {
         await sleep(250);
-        const act = db.activities.find((a) => a.Activity_ID === data.activityId);
+        const act = db.activities.find((a) => String(a.Activity_ID) === String(data.activityId));
         if (!act) throw new Error(`Activity_ID "${data.activityId}" nicht gefunden.`);
         if (data.bucket) act.Bucket = data.bucket;
         if (data.rpe) act.RPE = Number(data.rpe);
         if (data.muscleFocus) act.Muscle_Focus = data.muscleFocus;
         if (data.notes !== undefined) act.Notes = String(data.notes);
+        if (data.comment !== undefined) act.Comment = String(data.comment);
         return structuredClone({ activity: act });
       }
       case 'triggerGarminSync': {
@@ -603,6 +608,7 @@ const state = {
   loggerInitialized: false,
   taggerFilter: 'all',
   expandedId: null,
+  activityModalOpener: null,
   draft: {},
   hiddenExercises: new Set(['Front Squat', 'Weighted Pull-Up']),
   prLogIds: new Set(),
@@ -700,6 +706,10 @@ function renderReadiness() {
   };
   const hrvPct = r.hrvNight && r.hrv7dAvg ? Math.round((r.hrvNight / r.hrv7dAvg - 1) * 100) : null;
   const rhrDiff = r.restingHr && r.rhrBaseline ? round1(r.restingHr - r.rhrBaseline) : null;
+  const rhrStale = r.restingHr !== null && r.restingHrDate && r.restingHrDate !== r.date;
+  const rhrSub = r.restingHr === null ? 'keine Garmin-Daten'
+    : `${rhrDiff === null ? '' : `${rhrDiff > 0 ? '+' : ''}${fmt(rhrDiff)} vs. Ø`}${rhrStale ? `${rhrDiff === null ? '' : ' · '}Stand ${relDay(r.restingHrDate)}` : ''}` || '–';
+  const rhrCls = r.restingHr === null ? 'text-slate-500' : rhrDiff === null ? 'text-slate-500' : rhrDiff <= 2 ? 'text-emerald-400' : rhrDiff <= 5 ? 'text-amber-400' : 'text-rose-400';
   const tile = (label, value, unit, sub, subCls = 'text-slate-500') => `
     <div class="rounded-xl border border-white/[0.05] bg-slate-950/40 p-2.5">
       <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">${label}</div>
@@ -726,7 +736,7 @@ function renderReadiness() {
     <div class="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
       ${tile('Schlaf', fmt(r.sleepScore, 0), '/100', r.sleepScore >= 75 ? 'erholsam' : r.sleepScore >= 60 ? 'mittel' : 'kurz/unruhig', r.sleepScore >= 75 ? 'text-emerald-400' : r.sleepScore >= 60 ? 'text-amber-400' : 'text-rose-400')}
       ${tile('HRV Nacht', fmt(r.hrvNight, 0), 'ms', hrvPct === null ? '–' : `Ø ${fmt(r.hrv7dAvg, 0)} · ${hrvPct > 0 ? '+' : ''}${hrvPct}%`, hrvPct >= -3 ? 'text-emerald-400' : hrvPct >= -12 ? 'text-amber-400' : 'text-rose-400')}
-      ${tile('Ruhepuls', fmt(r.restingHr, 0), 'bpm', rhrDiff === null ? '–' : `${rhrDiff > 0 ? '+' : ''}${fmt(rhrDiff)} vs. Ø`, rhrDiff <= 2 ? 'text-emerald-400' : rhrDiff <= 5 ? 'text-amber-400' : 'text-rose-400')}
+      ${tile('Ruhepuls', fmt(r.restingHr, 0), 'bpm', rhrSub, rhrCls)}
       ${tile('Body Battery', fmt(r.bodyBatteryMax, 0), '', 'Tagesmax.')}
     </div>`;
 }
@@ -968,7 +978,7 @@ async function logSet() {
   }
 }
 
-/* ---------------- Activity Tagger ---------------- */
+/* ---------------- Activity Tagger (Liste + Pop-up-Modal) ---------------- */
 function renderTagger() {
   const acts = state.derived.activities;
   const open = acts.filter(Analytics.isUntagged);
@@ -989,96 +999,191 @@ function activityItem(a) {
   const b = BUCKETS[a.Bucket];
   const t = TYPE_META[a.Type] || TYPE_META.Other;
   const untagged = Analytics.isUntagged(a);
-  const expanded = state.expandedId === String(a.Activity_ID);
   const rpe = num(a.RPE);
   const meta = [relDay(a.Date), a.Duration_Min ? `${a.Duration_Min} min` : null, num(a.Garmin_Load) ? `Load ${a.Garmin_Load}` : null, num(a.Avg_HR) ? `Ø ${a.Avg_HR} bpm` : null].filter(Boolean).join(' · ');
   const rgb = b ? b.rgb : '148,163,184';
+  const comment = String(a.Comment || '').trim();
   return `
-  <li class="overflow-hidden rounded-2xl border transition-colors ${expanded ? 'border-emerald-400/30 bg-slate-950/60' : 'border-white/[0.06] bg-slate-950/30 hover:border-white/15'}">
-    <button type="button" data-act-toggle="${escapeHtml(a.Activity_ID)}" class="flex w-full items-center gap-3 p-3 text-left" aria-expanded="${expanded}">
-      <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-xl" style="background:rgba(${rgb},.12);box-shadow:inset 0 0 0 1px rgba(${rgb},.25)">${t.icon}</span>
-      <span class="min-w-0 flex-1">
-        <span class="flex items-center gap-2">
-          <span class="truncate text-sm font-semibold text-white">${escapeHtml(a.Notes || t.label)}</span>
-          ${untagged ? '<span class="shrink-0 rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">Offen</span>' : ''}
+  <li class="overflow-hidden rounded-2xl border border-white/[0.06] bg-slate-950/30 transition-colors hover:border-white/15 hover:bg-slate-950/50">
+    <button type="button" data-act-open="${escapeHtml(a.Activity_ID)}" class="w-full p-3 text-left" aria-haspopup="dialog">
+      <span class="flex items-center gap-3">
+        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-xl" style="background:rgba(${rgb},.12);box-shadow:inset 0 0 0 1px rgba(${rgb},.25)">${t.icon}</span>
+        <span class="min-w-0 flex-1">
+          <span class="flex items-center gap-2">
+            <span class="truncate text-sm font-semibold text-white">${escapeHtml(a.Notes || t.label)}</span>
+            ${untagged ? '<span class="shrink-0 rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">Offen</span>' : ''}
+            ${comment ? '<span class="shrink-0 text-xs text-slate-400" title="Markdown-Kommentar vorhanden">📝</span>' : ''}
+          </span>
+          <span class="block truncate text-xs text-slate-400">${escapeHtml(t.label)} · ${meta}</span>
         </span>
-        <span class="block truncate text-xs text-slate-400">${escapeHtml(t.label)} · ${meta}</span>
-      </span>
-      <span class="flex shrink-0 flex-col items-end gap-1">
-        ${b ? `<span class="rounded-full px-2 py-0.5 text-[10px] font-bold ${b.text}" style="background:rgba(${rgb},.12)">${b.label}</span>` : '<span class="text-[10px] text-slate-500">kein Bucket</span>'}
-        <span class="text-[11px] tabular ${rpe ? 'text-slate-300' : 'text-slate-600'}">RPE ${rpe ?? '–'}${a.Muscle_Focus ? ` · ${MUSCLE_FOCUS[a.Muscle_Focus] || a.Muscle_Focus}` : ''}</span>
+        <span class="flex shrink-0 flex-col items-end gap-1">
+          ${b ? `<span class="rounded-full px-2 py-0.5 text-[10px] font-bold ${b.text}" style="background:rgba(${rgb},.12)">${b.label}</span>` : '<span class="text-[10px] text-slate-500">kein Bucket</span>'}
+          <span class="text-[11px] tabular ${rpe ? 'text-slate-300' : 'text-slate-600'}">RPE ${rpe ?? '–'}${a.Muscle_Focus ? ` · ${MUSCLE_FOCUS[a.Muscle_Focus] || a.Muscle_Focus}` : ''}</span>
+        </span>
       </span>
     </button>
-    ${expanded ? tagEditor(a) : ''}
+    ${comment ? `<div class="prose prose-invert prose-xs mt-2 max-h-20 max-w-none overflow-hidden rounded-xl border border-white/[0.05] bg-slate-950/60 px-3 py-2 text-xs text-slate-300 prose-p:my-0.5 prose-ul:my-0.5 prose-li:my-0 prose-headings:my-0.5 prose-headings:text-xs prose-strong:text-white">${renderMarkdown(comment)}</div>` : ''}
   </li>`;
 }
 
-function tagEditor(a) {
+/** Synchronisiert die Textfelder des offenen Modals in state.draft (verhindert Datenverlust bei Button-Klicks). */
+function syncDraftInputs() {
+  const titleEl = $('#draftNotes');
+  const commentEl = $('#draftComment');
+  if (titleEl) state.draft.notes = titleEl.value;
+  if (commentEl) state.draft.comment = commentEl.value;
+}
+
+function openActivityModal(id, opener = document.activeElement) {
+  const a = state.derived.activities.find((x) => String(x.Activity_ID) === String(id));
+  if (!a) return;
+  state.activityModalOpener = opener;
+  state.expandedId = String(id);
+  state.draft = {
+    bucket: a.Bucket || '',
+    rpe: num(a.RPE),
+    focus: a.Muscle_Focus || Analytics.defaultFocus(a),
+    notes: a.Notes || '',
+    comment: a.Comment || '',
+    preview: false
+  };
+  renderActivityModal();
+  $('#activityModal').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  $('#draftNotes').focus();
+}
+
+function closeActivityModal() {
+  const opener = state.activityModalOpener;
+  const activityId = state.expandedId;
+  state.activityModalOpener = null;
+  state.expandedId = null;
+  $('#activityModal').classList.add('hidden');
+  if ($('#settingsModal').classList.contains('hidden')) document.body.style.overflow = '';
+  const currentOpener = opener?.isConnected ? opener
+    : $$('#activityList [data-act-open]').find((button) => button.dataset.actOpen === activityId);
+  if (currentOpener) currentOpener.focus();
+}
+
+function renderActivityModal() {
+  const a = state.derived?.activities.find((x) => String(x.Activity_ID) === String(state.expandedId));
+  if (!a) return;
+  const active = document.activeElement;
+  const focusAttributes = ['data-draft-bucket', 'data-draft-rpe', 'data-draft-focus', 'data-draft-tab', 'data-close-activity'];
+  const focusAttribute = $('#activityModal').contains(active) && focusAttributes.find((attribute) => active.hasAttribute(attribute));
+  const focusValue = focusAttribute ? active.getAttribute(focusAttribute) : null;
   const d = state.draft;
+  const t = TYPE_META[a.Type] || TYPE_META.Other;
+  const b = BUCKETS[d.bucket] || BUCKETS[a.Bucket];
+  const rgb = b ? b.rgb : '148,163,184';
+  const meta = [relDay(a.Date), a.Duration_Min ? `${a.Duration_Min} min` : null, num(a.Garmin_Load) ? `Load ${a.Garmin_Load}` : null, num(a.Avg_HR) ? `Ø ${a.Avg_HR} bpm` : null, a.Source].filter(Boolean).join(' · ');
   const rpeColor = (n) => (n <= 4 ? '16,185,129' : n <= 6 ? '56,189,248' : n <= 8 ? '245,158,11' : '244,63,94');
   const rpeDesc = { 1: 'sehr leicht', 2: 'leicht', 3: 'locker', 4: 'moderat', 5: 'mittel', 6: 'fordernd', 7: 'hart', 8: 'sehr hart', 9: 'fast max.', 10: 'maximal' };
-  return `
-    <div class="space-y-4 border-t border-white/[0.06] p-3 animate-fade-up">
-      <div>
-        <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Bucket</div>
-        <div class="grid grid-cols-3 gap-2">
-          ${Object.entries(BUCKETS).map(([k, b]) => `
-            <button type="button" data-draft-bucket="${k}" class="rounded-xl border px-2 py-2.5 text-sm font-semibold transition active:scale-95 ${d.bucket === k ? b.text : 'border-white/10 text-slate-300 hover:bg-white/5'}"
-              style="${d.bucket === k ? `border-color:rgba(${b.rgb},.6);background:rgba(${b.rgb},.15)` : ''}">${b.icon} ${b.label}</button>`).join('')}
+
+  $('#activityModalContent').innerHTML = `
+    <div class="mb-4 flex items-start justify-between gap-3">
+      <div class="flex min-w-0 items-center gap-3">
+        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-xl" style="background:rgba(${rgb},.15);box-shadow:inset 0 0 0 1px rgba(${rgb},.3)">${t.icon}</span>
+        <div class="min-w-0">
+          <h2 id="activityModalTitle" class="truncate font-display text-lg font-bold text-white">${escapeHtml(d.notes || a.Notes || t.label)}</h2>
+          <p class="truncate text-xs text-slate-400">${escapeHtml(t.label)} · ${meta}</p>
         </div>
       </div>
+      <button type="button" data-close-activity class="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-slate-400 hover:bg-white/5 hover:text-white" aria-label="Schließen">
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="space-y-4">
       <div>
-        <div class="mb-1.5 flex justify-between text-[11px] font-semibold uppercase tracking-wider text-slate-500"><span>RPE</span><span class="normal-case tracking-normal text-slate-300">${d.rpe ? `${d.rpe} · ${rpeDesc[d.rpe]}` : 'wählen'}</span></div>
+        <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Bucket</div>
+        <div class="grid grid-cols-3 gap-2">
+          ${Object.entries(BUCKETS).map(([k, bk]) => `
+            <button type="button" data-draft-bucket="${k}" class="rounded-xl border px-2 py-2.5 text-sm font-semibold transition active:scale-95 ${d.bucket === k ? bk.text : 'border-white/10 text-slate-300 hover:bg-white/5'}"
+              style="${d.bucket === k ? `border-color:rgba(${bk.rgb},.6);background:rgba(${bk.rgb},.15)` : ''}">${bk.icon} ${bk.label}</button>`).join('')}
+        </div>
+      </div>
+
+      <div>
+        <div class="mb-1.5 flex justify-between text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+          <span>RPE (Anstrengung)</span>
+          <span class="normal-case tracking-normal text-slate-300">${d.rpe ? `${d.rpe} · ${rpeDesc[d.rpe]}` : 'wählen'}</span>
+        </div>
         <div class="grid grid-cols-10 gap-1">
           ${Array.from({ length: 10 }, (_, i) => i + 1).map((n) => `
             <button type="button" data-draft-rpe="${n}" class="h-10 rounded-lg text-sm font-bold transition active:scale-90 ${d.rpe === n ? 'text-slate-950' : 'text-slate-300'}"
               style="background:rgba(${rpeColor(n)},${d.rpe === n ? '1' : '.1'});box-shadow:inset 0 0 0 1px rgba(${rpeColor(n)},.35)">${n}</button>`).join('')}
         </div>
       </div>
+
       <div>
-        <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Muscle Focus</div>
+        <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Muscle Focus</div>
         <div class="flex flex-wrap gap-1.5">
           ${Object.entries(MUSCLE_FOCUS).map(([k, label]) => `<button type="button" data-draft-focus="${k}" class="chip ${d.focus === k ? 'chip-on' : 'chip-off'}">${label}</button>`).join('')}
         </div>
       </div>
+
       <div>
-        <label for="draftNotes" class="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Notiz</label>
-        <input id="draftNotes" class="input" maxlength="500" value="${escapeHtml(d.notes ?? '')}" placeholder="z. B. WOD-Name, Gefühl, Skalierung" />
+        <label for="draftNotes" class="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">Kurztitel / Name</label>
+        <input id="draftNotes" class="input" maxlength="500" value="${escapeHtml(d.notes ?? '')}" placeholder="z. B. WOD „Fran“, Tempo Run 10 km" />
       </div>
-      <div class="flex gap-2">
-        <button type="button" data-act-save="${escapeHtml(a.Activity_ID)}" class="btn btn-primary flex-1">Speichern</button>
-        <button type="button" data-act-cancel class="btn btn-ghost">Abbrechen</button>
+
+      <div>
+        <div class="mb-1.5 flex items-center justify-between">
+          <label for="draftComment" class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Notizen / Kommentar <span class="font-normal normal-case text-slate-500">(Markdown)</span></label>
+          <div class="flex rounded-lg border border-white/10 bg-slate-950/60 p-0.5 text-[11px] font-semibold">
+            <button type="button" data-draft-tab="edit" class="rounded-md px-2 py-0.5 transition ${!d.preview ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}">Schreiben</button>
+            <button type="button" data-draft-tab="preview" class="rounded-md px-2 py-0.5 transition ${d.preview ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}">Vorschau</button>
+          </div>
+        </div>
+        ${d.preview ? `
+          <div class="prose prose-invert prose-sm min-h-[116px] max-w-none rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-sm text-slate-200 prose-p:my-1 prose-ul:my-1 prose-li:my-0.5 prose-headings:my-1 prose-headings:text-white prose-strong:text-white">
+            ${d.comment && d.comment.trim() ? renderMarkdown(d.comment) : '<p class="text-slate-500 italic">Noch kein Kommentar eingegeben…</p>'}
+          </div>` : `
+          <textarea id="draftComment" rows="4" maxlength="5000" class="input min-h-[116px] resize-y font-sans leading-relaxed"
+            placeholder="Mehrzeilige Notizen (Markdown möglich), z. B.&#10;- **WOD:** 21-15-9 Thrusters @ 40 kg &amp; Pull-Ups&#10;- **Gefühl:** Beine schwer, ab Runde 2 gesplittet">${escapeHtml(d.comment ?? '')}</textarea>`}
+      </div>
+
+      <div class="flex gap-2 pt-1">
+        <button type="button" data-act-save="${escapeHtml(a.Activity_ID)}" class="btn btn-primary flex-1 py-3">Speichern</button>
+        <button type="button" data-close-activity class="btn btn-ghost py-3">Abbrechen</button>
       </div>
     </div>`;
-}
-
-function toggleActivity(id) {
-  if (state.expandedId === String(id)) { state.expandedId = null; renderTagger(); return; }
-  const a = state.derived.activities.find((x) => String(x.Activity_ID) === String(id));
-  if (!a) return;
-  state.expandedId = String(id);
-  state.draft = { bucket: a.Bucket || '', rpe: num(a.RPE), focus: a.Muscle_Focus || Analytics.defaultFocus(a), notes: a.Notes || '' };
-  renderTagger();
+  if (focusAttribute) {
+    const focusTarget = $$(`[${focusAttribute}]`, $('#activityModalContent'))
+      .find((element) => element.getAttribute(focusAttribute) === focusValue);
+    if (focusTarget) focusTarget.focus();
+  }
 }
 
 async function saveActivityTag(id, btn) {
+  syncDraftInputs();
   const d = state.draft;
-  const notesEl = $('#draftNotes');
-  if (notesEl) d.notes = notesEl.value;
   if (!d.bucket || !d.rpe || !d.focus) { toast('Bitte Bucket, RPE und Muscle Focus wählen.', 'error'); return; }
   btn.disabled = true;
   btn.textContent = 'Speichere…';
   try {
-    const res = await api('tagActivity', { activityId: String(id), bucket: d.bucket, rpe: d.rpe, muscleFocus: d.focus, notes: d.notes });
+    const res = await api('tagActivity', {
+      activityId: String(id),
+      bucket: d.bucket,
+      rpe: d.rpe,
+      muscleFocus: d.focus,
+      notes: d.notes,
+      comment: d.comment
+    });
     const updated = res.activity || {};
-    state.data.activities = (state.data.activities || []).map((a) => (String(a.Activity_ID) === String(id) ? { ...a, ...updated, Bucket: d.bucket, RPE: d.rpe, Muscle_Focus: d.focus, Notes: d.notes } : a));
+    state.data.activities = (state.data.activities || []).map((a) => (
+      String(a.Activity_ID) === String(id)
+        ? { ...a, ...updated, Bucket: d.bucket, RPE: d.rpe, Muscle_Focus: d.focus, Notes: d.notes, Comment: d.comment }
+        : a
+    ));
     state.derived = buildDerived(state.data);
-    state.expandedId = null;
     vibrate(12);
     renderAll();
-    toast('✓ Aktivität getaggt – Kompass & Ermüdung aktualisiert', 'success');
+    closeActivityModal();
+    toast('✓ Aktivität gespeichert – Kompass & Ermüdung aktualisiert', 'success');
   } catch (err) {
-    toast(`Tagging fehlgeschlagen: ${err.message}`, 'error');
+    toast(`Speichern fehlgeschlagen: ${err.message}`, 'error');
     btn.disabled = false;
     btn.textContent = 'Speichern';
   }
@@ -1208,11 +1313,30 @@ const COACH_PRESET_LABELS = { today: '☀️ Was steht heute an?', rack: '🏋�
 
 function setupMarked() {
   if (!window.marked) return;
-  // Rohes HTML aus der KI-Antwort wird escaped (XSS-Schutz ohne zusätzliche Library)
+  // Rohes HTML wird escaped; Linkziele dürfen nur sichere URL-Schemata verwenden.
   marked.use({
     gfm: true, breaks: true,
-    renderer: { html(token) { return escapeHtml(typeof token === 'string' ? token : (token && token.text) || ''); } }
+    renderer: {
+      html(token) { return escapeHtml(typeof token === 'string' ? token : (token && token.text) || ''); },
+      link(href, linkTitle, text) {
+        const safeHref = safeMarkdownUrl(href);
+        if (safeHref === null) return text;
+        const title = linkTitle ? ` title="${escapeHtml(linkTitle)}"` : '';
+        return `<a href="${escapeHtml(safeHref)}"${title}>${text}</a>`;
+      },
+      image(href, imageTitle, text) { return escapeHtml(text); }
+    }
   });
+}
+function safeMarkdownUrl(href) {
+  const value = String(href ?? '').trim();
+  if (!value || /[\u0000-\u001f\u007f]/.test(value)) return null;
+  try {
+    const protocol = new URL(value, document.baseURI).protocol.toLowerCase();
+    return ['http:', 'https:', 'mailto:', 'tel:'].includes(protocol) ? value : null;
+  } catch (_) {
+    return null;
+  }
 }
 function renderMarkdown(md) {
   if (!window.marked) return `<pre class="whitespace-pre-wrap">${escapeHtml(md)}</pre>`;
@@ -1407,7 +1531,29 @@ function bindEvents() {
 
   // Settings
   $$('[data-close-settings]').forEach((el) => el.addEventListener('click', closeSettings));
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#settingsModal').classList.contains('hidden')) closeSettings(); });
+  document.addEventListener('keydown', (e) => {
+    const activityModal = $('#activityModal');
+    if (!activityModal.classList.contains('hidden') && e.key === 'Tab') {
+      const focusable = $$('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])', activityModal)
+        .filter((element) => element.getClientRects().length);
+      if (!focusable.length) {
+        e.preventDefault();
+        activityModal.focus();
+      } else {
+        const first = focusable[0], last = focusable[focusable.length - 1];
+        if (e.shiftKey && (document.activeElement === first || !activityModal.contains(document.activeElement))) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && (document.activeElement === last || !activityModal.contains(document.activeElement))) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    }
+    if (e.key !== 'Escape') return;
+    if (!activityModal.classList.contains('hidden')) closeActivityModal();
+    else if (!$('#settingsModal').classList.contains('hidden')) closeSettings();
+  });
   $('#togglePin').addEventListener('click', () => {
     const inp = $('#appPinInput');
     inp.type = inp.type === 'password' ? 'text' : 'password';
@@ -1440,20 +1586,32 @@ function bindEvents() {
   $('#rirSlider').addEventListener('input', (e) => { state.logger.rir = Number(e.target.value); updateLoggerLive(); });
   $('#btnLogSet').addEventListener('click', logSet);
 
-  // Tagger
+  // Tagger (Liste + Pop-up-Modal)
   $('#filterAll').addEventListener('click', () => { state.taggerFilter = 'all'; renderTagger(); });
   $('#filterOpen').addEventListener('click', () => { state.taggerFilter = 'open'; renderTagger(); });
   $('#activityList').addEventListener('click', (e) => {
+    const t = e.target.closest('button[data-act-open]');
+    if (t) { vibrate(6); openActivityModal(t.dataset.actOpen, t); }
+  });
+  $('#activityModal').addEventListener('input', (e) => {
+    if (e.target.id === 'draftNotes') {
+      state.draft.notes = e.target.value;
+      const titleEl = $('#activityModalTitle');
+      if (titleEl) titleEl.textContent = e.target.value || titleEl.textContent;
+    } else if (e.target.id === 'draftComment') {
+      state.draft.comment = e.target.value;
+    }
+  });
+  $('#activityModal').addEventListener('click', (e) => {
+    if (e.target.closest('[data-close-activity]')) { closeActivityModal(); return; }
     const t = e.target.closest('button');
     if (!t) return;
-    const notesEl = $('#draftNotes');
-    if (notesEl) state.draft.notes = notesEl.value;
-    if (t.dataset.actToggle) toggleActivity(t.dataset.actToggle);
-    else if (t.dataset.draftBucket) { state.draft.bucket = t.dataset.draftBucket; vibrate(6); renderTagger(); }
-    else if (t.dataset.draftRpe) { state.draft.rpe = Number(t.dataset.draftRpe); vibrate(6); renderTagger(); }
-    else if (t.dataset.draftFocus) { state.draft.focus = t.dataset.draftFocus; vibrate(6); renderTagger(); }
+    syncDraftInputs();
+    if (t.dataset.draftBucket) { state.draft.bucket = t.dataset.draftBucket; vibrate(6); renderActivityModal(); }
+    else if (t.dataset.draftRpe) { state.draft.rpe = Number(t.dataset.draftRpe); vibrate(6); renderActivityModal(); }
+    else if (t.dataset.draftFocus) { state.draft.focus = t.dataset.draftFocus; vibrate(6); renderActivityModal(); }
+    else if (t.dataset.draftTab) { state.draft.preview = t.dataset.draftTab === 'preview'; renderActivityModal(); }
     else if (t.dataset.actSave) saveActivityTag(t.dataset.actSave, t);
-    else if (t.hasAttribute('data-act-cancel')) { state.expandedId = null; renderTagger(); }
   });
 
   // Strength chart filter

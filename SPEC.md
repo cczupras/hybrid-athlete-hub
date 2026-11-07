@@ -1,4 +1,4 @@
-﻿# Complete Technical Specification: Hybrid Athlete Hub
+# Complete Technical Specification: Hybrid Athlete Hub
 
 ## 1. Domain Logic & Hybrid Training Concept
 The athlete trains across three buckets that compete for recovery (especially CNS and lower body):
@@ -38,7 +38,8 @@ The athlete trains across three buckets that compete for recovery (especially CN
 8. Avg_HR (Number)
 9. RPE (Number 1-10)
 10. Muscle_Focus (Lower_Heavy | Upper_Push | Upper_Pull | Full_Body | Cardio_Z2 | Cardio_High)
-11. Notes (String)
+11. Notes (String – Kurztitel, z. B. Garmin-Aktivitätsname oder Rack-Sätze)
+12. Comment (String – mehrzeiliger Freitext-Kommentar, Markdown erlaubt)
 
 ### Tab 3: Strength_Log
 1. Log_ID (UUID)
@@ -72,7 +73,7 @@ Supports actions:
 - initSheets: Automatically creates the 4 tabs and headers if they don't exist yet, plus default rows in Config_Targets.
 - getDashboard: Returns last 14 days of Daily_Metrics, last 30 Activities, last 50 Strength_Log entries, and Config_Targets as arrays of objects (mapped by header names).
 - logStrength: Appends a set/session to Strength_Log (and optionally creates/updates today's Rack_Strength entry in Activities), returns calculated e1RM.
-- 	TagActivity: Updates Bucket, RPE, Muscle_Focus, and Notes for an existing Activity_ID in Activities.
+- 	TagActivity: Updates Bucket, RPE, Muscle_Focus, Notes and Comment (Markdown) for an existing Activity_ID in Activities.
 - 	TriggerGarminSync: Calls syncGarminData() manually from the UI and returns sync summary.
 - askGemini: Calls askGeminiCoach(request.prompt, contextData) and returns { reply: markdownString }.
 

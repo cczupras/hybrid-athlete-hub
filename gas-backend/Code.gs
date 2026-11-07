@@ -21,7 +21,7 @@
  * ------------------------------------------------------------------------- */
 var SCHEMA = {
   Daily_Metrics: ['Date', 'Sleep_Score', 'HRV_7d_Avg', 'HRV_Night', 'Resting_HR', 'Body_Battery_Max', 'Readiness_Status'],
-  Activities: ['Activity_ID', 'Date', 'Source', 'Bucket', 'Type', 'Duration_Min', 'Garmin_Load', 'Avg_HR', 'RPE', 'Muscle_Focus', 'Notes'],
+  Activities: ['Activity_ID', 'Date', 'Source', 'Bucket', 'Type', 'Duration_Min', 'Garmin_Load', 'Avg_HR', 'RPE', 'Muscle_Focus', 'Notes', 'Comment'],
   Strength_Log: ['Log_ID', 'Date', 'Activity_ID', 'Exercise', 'Sets', 'Reps', 'Weight_kg', 'RIR', 'e1RM'],
   Config_Targets: ['Metric', 'Target_Value', 'Notes']
 };
@@ -37,7 +37,7 @@ var SHEET_KEYS = {
 /** Spalten, die als Plain-Text formatiert werden (verhindert Auto-Konvertierung von Datum/IDs). */
 var TEXT_COLUMNS = {
   Daily_Metrics: ['Date', 'Readiness_Status'],
-  Activities: ['Activity_ID', 'Date', 'Source', 'Bucket', 'Type', 'Muscle_Focus', 'Notes'],
+  Activities: ['Activity_ID', 'Date', 'Source', 'Bucket', 'Type', 'Muscle_Focus', 'Notes', 'Comment'],
   Strength_Log: ['Log_ID', 'Date', 'Activity_ID', 'Exercise'],
   Config_Targets: ['Metric', 'Notes']
 };
@@ -316,7 +316,7 @@ function handleLogStrength_(data) {
   };
 }
 
-/** tagActivity: aktualisiert Bucket, RPE, Muscle_Focus und Notes einer Aktivität. */
+/** tagActivity: aktualisiert Bucket, RPE, Muscle_Focus, Notes und Comment (Markdown) einer Aktivität. */
 function handleTagActivity_(data) {
   var id = String(data.activityId || data.Activity_ID || '').trim();
   if (!id) throw apiError_('activityId fehlt.', 400);
@@ -326,6 +326,7 @@ function handleTagActivity_(data) {
   var rpe = data.rpe !== undefined ? data.rpe : data.RPE;
   var focus = data.muscleFocus !== undefined ? data.muscleFocus : data.Muscle_Focus;
   var notes = data.notes !== undefined ? data.notes : data.Notes;
+  var comment = data.comment !== undefined ? data.comment : data.Comment;
   var type = data.type !== undefined ? data.type : data.Type;
 
   if (bucket !== undefined && bucket !== '') patch.Bucket = requireEnum_(bucket, ENUMS.Bucket, 'bucket');
@@ -336,13 +337,38 @@ function handleTagActivity_(data) {
     if (r === null || r < 1 || r > 10) throw apiError_('RPE muss zwischen 1 und 10 liegen.', 400);
     patch.RPE = Math.round(r);
   }
-  if (notes !== undefined) patch.Notes = String(notes).slice(0, 500);
+  if (notes !== undefined) patch.Notes = String(notes).replace(/[\r\n]+/g, ' ').slice(0, 500);
+  if (comment !== undefined) {
+    // Mehrzeiliger Markdown-Kommentar; Zeilenumbrüche normalisieren, Zell-Limit großzügig begrenzen
+    patch.Comment = String(comment).replace(/\r\n?/g, '\n').slice(0, 5000);
+    ensureSchemaHeaders_('Activities');
+  }
 
   if (!Object.keys(patch).length) throw apiError_('Keine Felder zum Aktualisieren übergeben.', 400);
 
   var updated = updateObjectByKey_('Activities', id, patch);
   if (!updated) throw apiError_('Activity_ID "' + id + '" nicht gefunden.', 404);
   return { activity: updated };
+}
+
+/**
+ * Ergänzt fehlende Header-Zellen am Ende eines Tabellenblatts (z. B. neue Spalte "Comment"
+ * in bestehenden Sheets), ohne vorhandene Header oder Daten anzufassen.
+ */
+function ensureSchemaHeaders_(name) {
+  var sheet = getSheet_(name);
+  var headers = SCHEMA[name];
+  if (sheet.getMaxColumns() < headers.length) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
+  }
+  var current = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
+  headers.forEach(function (h, i) {
+    if (String(current[i]).trim() !== '') return;
+    sheet.getRange(1, i + 1).setValue(h).setFontWeight('bold').setBackground('#0f172a').setFontColor('#34d399').setHorizontalAlignment('center');
+    if ((TEXT_COLUMNS[name] || []).indexOf(h) >= 0) {
+      sheet.getRange(2, i + 1, Math.max(sheet.getMaxRows() - 1, 1), 1).setNumberFormat('@');
+    }
+  });
 }
 
 /**

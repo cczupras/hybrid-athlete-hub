@@ -14,7 +14,8 @@ A serverless training analysis and planning tool combining **Garmin Connect Pers
 `Date` | `Sleep_Score` | `HRV_7d_Avg` | `HRV_Night` | `Resting_HR` | `Body_Battery_Max` | `Readiness_Status`
 
 ### Tab 2: `Activities`
-`Activity_ID` | `Date` | `Source` | `Bucket` | `Type` | `Duration_Min` | `Garmin_Load` | `Avg_HR` | `RPE` | `Muscle_Focus` | `Notes`
+`Activity_ID` | `Date` | `Source` | `Bucket` | `Type` | `Duration_Min` | `Garmin_Load` | `Avg_HR` | `RPE` | `Muscle_Focus` | `Notes` | `Comment`
+- **Notes:** Kurztitel (Garmin-Aktivitätsname / Rack-Sätze) · **Comment:** mehrzeiliger Markdown-Kommentar aus dem Activity Tagger
 - **Buckets:** `Engine` (Run, Bike), `Heavy` (Home Gym Rack), `Metcon` (CrossFit)
 - **Muscle_Focus:** `Lower_Heavy`, `Upper_Push`, `Upper_Pull`, `Full_Body`, `Cardio_Z2`, `Cardio_High`
 
