@@ -1178,9 +1178,9 @@ async function saveActivityTag(id, btn) {
         : a
     ));
     state.derived = buildDerived(state.data);
-    closeActivityModal();
     vibrate(12);
     renderAll();
+    closeActivityModal();
     toast('✓ Aktivität gespeichert – Kompass & Ermüdung aktualisiert', 'success');
   } catch (err) {
     toast(`Speichern fehlgeschlagen: ${err.message}`, 'error');
