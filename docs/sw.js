@@ -7,7 +7,7 @@
  */
 'use strict';
 
-const CACHE_NAME = 'hybrid-athlete-hub-v1';
+const CACHE_NAME = 'hybrid-athlete-hub-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -19,7 +19,7 @@ const APP_SHELL = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
+      .then((cache) => cache.addAll(APP_SHELL.map((u) => new Request(u, { cache: 'reload' }))))
       .then(() => self.skipWaiting())
   );
 });

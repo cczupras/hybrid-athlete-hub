@@ -14,8 +14,11 @@
  *    GARMIN_PATH_DAILIES / GARMIN_PATH_SLEEPS / GARMIN_PATH_HRV / GARMIN_PATH_ACTIVITIES
  *                     – optional. Pfad-Templates mit Platzhaltern {start}, {end}
  *                       (Unix-Sekunden) und {date} (YYYY-MM-DD).
+ *    GARMIN_PATH_HEARTRATE – optional. Zusätzlicher Endpunkt nur für den Ruhepuls
+ *                       (z. B. '/wellness-service/wellness/dailyHeartRate?date={date}').
  *
  *  Zeitgesteuert: installDailyGarminTrigger() einmal im Editor ausführen.
+ *  Diagnose Ruhepuls: debugGarminRestingHr() im Editor ausführen.
  * ============================================================================
  */
 
@@ -46,7 +49,7 @@ function syncGarminData(days) {
     days: nDays,
     metrics: { inserted: 0, updated: 0, unchanged: 0 },
     activities: { inserted: 0, updated: 0, unchanged: 0 },
-    fetched: { dailies: 0, sleeps: 0, hrv: 0, activities: 0 },
+    fetched: { dailies: 0, sleeps: 0, hrv: 0, heartrate: 0, activities: 0 },
     errors: []
   };
 
@@ -54,12 +57,14 @@ function syncGarminData(days) {
   var today = todayIso_();
   var metricsByDate = {};
   var activities = [];
+  var dailySample = null;
 
   for (var i = nDays - 1; i >= 0; i--) {
     var date = addDaysIso_(today, -i);
     var win = dayWindowSeconds_(date);
 
     collectGarmin_(summary, 'dailies', token, win, function (items) {
+      if (!dailySample && items.length) dailySample = items[0];
       items.forEach(function (d) { mergeMetric_(metricsByDate, mapGarminDaily_(d, date)); });
     });
     collectGarmin_(summary, 'sleeps', token, win, function (items) {
@@ -68,6 +73,13 @@ function syncGarminData(days) {
     collectGarmin_(summary, 'hrv', token, win, function (items) {
       items.forEach(function (h) { mergeMetric_(metricsByDate, mapGarminHrv_(h, date)); });
     });
+    // Optionaler eigener Herzfrequenz-Endpunkt (Script Property GARMIN_PATH_HEARTRATE, z. B.
+    // '/wellness-service/wellness/dailyHeartRate?date={date}') – nur abfragen, wenn konfiguriert
+    if (getProp_('GARMIN_PATH_HEARTRATE')) {
+      collectGarmin_(summary, 'heartrate', token, win, function (items) {
+        items.forEach(function (hr) { mergeMetric_(metricsByDate, { Date: pickDate_(hr, date), _Resting_HR_Fallback: extractRestingHr_(hr) }); });
+      });
+    }
     collectGarmin_(summary, 'activities', token, win, function (items) {
       items.forEach(function (a) {
         var mapped = mapGarminActivity_(a);
@@ -76,8 +88,23 @@ function syncGarminData(days) {
     });
   }
 
+  // Ruhepuls: dailies haben Vorrang, sonst Wert aus Sleep-/Heart-Rate-Antwort
+  var metricRows = Object.keys(metricsByDate).sort().map(function (d) {
+    var m = metricsByDate[d];
+    if ((m.Resting_HR === undefined || m.Resting_HR === null) && m._Resting_HR_Fallback) m.Resting_HR = m._Resting_HR_Fallback;
+    delete m._Resting_HR_Fallback;
+    return m;
+  });
+  var rhrDays = metricRows.filter(function (m) { return toNumber_(m.Resting_HR) !== null; }).length;
+  summary.restingHr = { daysWithValue: rhrDays, daysTotal: metricRows.length };
+  if (metricRows.length && !rhrDays) {
+    // Diagnose: welche Felder liefert der dailies-Endpunkt tatsächlich?
+    summary.restingHr.dailyKeys = dailySample ? Object.keys(dailySample).slice(0, 60) : [];
+    console.warn('[syncGarminData] Kein Ruhepuls gefunden. dailies-Felder: ' + JSON.stringify(summary.restingHr.dailyKeys) +
+      ' – Details mit debugGarminRestingHr() im Editor prüfen.');
+  }
+
   // Readiness berechnen (Baseline Resting HR aus vorhandenen Daten)
-  var metricRows = Object.keys(metricsByDate).sort().map(function (d) { return metricsByDate[d]; });
   if (metricRows.length) {
     var existing = readObjects_('Daily_Metrics');
     metricRows.forEach(function (m) {
@@ -96,6 +123,7 @@ function syncGarminData(days) {
   summary.message = 'Garmin Sync: ' +
     summary.metrics.inserted + ' neue / ' + summary.metrics.updated + ' aktualisierte Tage, ' +
     summary.activities.inserted + ' neue / ' + summary.activities.updated + ' aktualisierte Aktivitäten' +
+    (summary.restingHr.daysTotal ? ', Ruhepuls ' + summary.restingHr.daysWithValue + '/' + summary.restingHr.daysTotal + ' Tage' : '') +
     (summary.errors.length ? ' (' + summary.errors.length + ' Fehler)' : '') + '.';
   console.log('[syncGarminData] ' + JSON.stringify(summary));
   return summary;
@@ -108,6 +136,31 @@ function installDailyGarminTrigger() {
   });
   ScriptApp.newTrigger('syncGarminData').timeBased().everyDays(1).atHour(6).create();
   return 'Täglicher Garmin-Sync um ca. 06:00 Uhr eingerichtet.';
+}
+
+/**
+ * Diagnose für fehlenden Ruhepuls: im GAS-Editor ausführen und das Ausführungsprotokoll ansehen.
+ * Loggt für heute und gestern die rohen dailies-/sleeps-Antworten (gekürzt) und den erkannten Wert.
+ */
+function debugGarminRestingHr() {
+  var token = getGarminBearerToken_();
+  var today = todayIso_();
+  var kinds = ['dailies', 'sleeps'].concat(getProp_('GARMIN_PATH_HEARTRATE') ? ['heartrate'] : []);
+  [addDaysIso_(today, -1), today].forEach(function (date) {
+    var win = dayWindowSeconds_(date);
+    kinds.forEach(function (kind) {
+      try {
+        var items = garminFetch_(kind, token, win);
+        console.log('[' + date + ' ' + kind + '] ' + items.length + ' Einträge, erkannter Ruhepuls: ' +
+          JSON.stringify(items.map(extractRestingHr_)));
+        if (items.length) console.log('[' + date + ' ' + kind + '] Beispiel: ' + JSON.stringify(items[0]).slice(0, 3000));
+      } catch (err) {
+        console.error('[' + date + ' ' + kind + '] Fehler: ' + (err && err.message ? err.message : err));
+      }
+    });
+  });
+  var rows = readObjects_('Daily_Metrics').slice(-5).map(function (m) { return m.Date + ': ' + (m.Resting_HR === '' ? '(leer)' : m.Resting_HR); });
+  console.log('[Daily_Metrics] Resting_HR der letzten Zeilen: ' + rows.join(' · '));
 }
 
 /* ----------------------------------------------------------------------------
@@ -214,14 +267,15 @@ function garminFetch_(kind, token, win) {
 function mapGarminDaily_(d, fallbackDate) {
   return {
     Date: pickDate_(d, fallbackDate),
-    Resting_HR: pick_(d, ['restingHeartRateInBeatsPerMinute', 'restingHeartRate', 'restingHR', 'restingHeartRateValue', 'averageRestingHeartRate']),
+    Resting_HR: extractRestingHr_(d),
     Body_Battery_Max: pick_(d, ['bodyBatteryHighestValue', 'bodyBatteryChargedValue', 'maxBodyBattery', 'bodyBatteryMax'])
   };
 }
 
 function mapGarminSleep_(s, fallbackDate) {
-  var score = pick_(s, ['overallSleepScore.value', 'sleepScores.overall.value', 'sleepScore', 'overallSleepScore', 'score']);
-  return { Date: pickDate_(s, fallbackDate), Sleep_Score: score };
+  var score = pick_(s, ['overallSleepScore.value', 'sleepScores.overall.value', 'dailySleepDTO.sleepScores.overall.value', 'sleepScore', 'overallSleepScore', 'score']);
+  // Sleep-Antworten enthalten oft ebenfalls den Ruhepuls → nur als Fallback, falls dailies keinen liefern
+  return { Date: pickDate_(s, fallbackDate), Sleep_Score: score, _Resting_HR_Fallback: extractRestingHr_(s) };
 }
 
 function mapGarminHrv_(h, fallbackDate) {
@@ -230,6 +284,44 @@ function mapGarminHrv_(h, fallbackDate) {
     HRV_Night: pick_(h, ['lastNightAvg', 'hrvSummary.lastNightAvg', 'lastNight', 'nightlyAvg']),
     HRV_7d_Avg: pick_(h, ['weeklyAvg', 'hrvSummary.weeklyAvg', 'sevenDayAvg', 'baseline.weeklyAvg'])
   };
+}
+
+/** Bekannte Feldnamen/Pfade für den Ruhepuls (Health API, Personal API / Connect-Endpunkte). */
+var RESTING_HR_PATHS = [
+  'restingHeartRateInBeatsPerMinute', 'restingHeartRate', 'restingHR', 'restingHeartRateValue', 'restingHr',
+  'restingHeartRate.value', 'wellnessRestingHeartRate', 'currentDayRestingHeartRate',
+  'dailySleepDTO.restingHeartRate', 'heartRate.restingHeartRate', 'values.restingHR', 'values.restingHeartRate',
+  'allMetrics.metricsMap.WELLNESS_RESTING_HEART_RATE.0.value', 'averageRestingHeartRate'
+];
+
+/**
+ * Ruhepuls robust aus einer Garmin-Antwort lesen:
+ * 1) bekannte Pfade, 2) rekursive Suche nach einem "resting…heart/hr"-Schlüssel
+ * (ohne 7-Tage-Durchschnitte). Werte ≤ 0 (Garmin-Platzhalter) werden ignoriert.
+ * @return {number|null}
+ */
+function extractRestingHr_(obj) {
+  var valid = function (v) { var n = toNumber_(v); return (n !== null && n >= 25 && n <= 140) ? Math.round(n) : null; };
+  var direct = valid(pick_(obj, RESTING_HR_PATHS));
+  if (direct !== null) return direct;
+
+  var found = null;
+  var walk = function (node, depth) {
+    if (found !== null || !node || typeof node !== 'object' || depth > 5) return;
+    Object.keys(node).forEach(function (k) {
+      if (found !== null) return;
+      var v = node[k];
+      var isRhrKey = /resting.?(heart|hr)/i.test(k) && !/avg|average|seven|7|last|min|max|zone/i.test(k);
+      if (isRhrKey) {
+        if (v && typeof v === 'object' && !Array.isArray(v)) found = valid(v.value);
+        else found = valid(v);
+        if (found !== null) return;
+      }
+      if (v && typeof v === 'object') walk(v, depth + 1);
+    });
+  };
+  walk(obj, 0);
+  return found;
 }
 
 /** Garmin-Aktivität → Activities-Zeile inkl. Auto-Klassifizierung (Bucket, Type, Muscle_Focus). */
