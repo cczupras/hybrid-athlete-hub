@@ -10,12 +10,12 @@
  *  Script Properties:
  *    GARMIN_API_KEY   – Pflicht. Personal API Key aus Garmin Connect.
  *    GARMIN_API_BASE  – optional. Basis-URL der Daten-Endpunkte
- *                       (Default: https://apis.garmin.com/wellness-api/rest)
- *    GARMIN_PATH_DAILIES / GARMIN_PATH_SLEEPS / GARMIN_PATH_HRV / GARMIN_PATH_ACTIVITIES
- *                     – optional. Pfad-Templates mit Platzhaltern {start}, {end}
- *                       (Unix-Sekunden) und {date} (YYYY-MM-DD).
- *    GARMIN_PATH_HEARTRATE – optional. Zusätzlicher Endpunkt nur für den Ruhepuls
- *                       (z. B. '/wellness-service/wellness/dailyHeartRate?date={date}').
+ *                       (Default: https://personal.connectapi.garmin.com)
+ *    GARMIN_PATH_DAILIES / GARMIN_PATH_SLEEPS / GARMIN_PATH_HRV /
+ *    GARMIN_PATH_HEARTRATE / GARMIN_PATH_ACTIVITIES
+ *                     – optional. Pfad-Templates mit Platzhaltern {date},
+ *                       {calendarDate}, {startDate}, {endDate} (YYYY-MM-DD)
+ *                       sowie {start}, {end} (Unix-Sekunden).
  *
  *  Zeitgesteuert: installDailyGarminTrigger() einmal im Editor ausführen.
  *  Diagnose Ruhepuls: debugGarminRestingHr() im Editor ausführen.
@@ -23,12 +23,13 @@
  */
 
 var GARMIN_TOKEN_URL = 'https://personal.connectapi.garmin.com/personalapitoken-service/personal-api/personal-api-key/token';
-var GARMIN_DEFAULT_BASE = 'https://apis.garmin.com/wellness-api/rest';
+var GARMIN_DEFAULT_BASE = 'https://personal.connectapi.garmin.com';
 var GARMIN_DEFAULT_PATHS = {
-  dailies: '/dailies?uploadStartTimeInSeconds={start}&uploadEndTimeInSeconds={end}',
-  sleeps: '/sleeps?uploadStartTimeInSeconds={start}&uploadEndTimeInSeconds={end}',
-  hrv: '/hrv?uploadStartTimeInSeconds={start}&uploadEndTimeInSeconds={end}',
-  activities: '/activities?uploadStartTimeInSeconds={start}&uploadEndTimeInSeconds={end}'
+  dailies: '/usersummary-service/usersummary/daily?calendarDate={date}',
+  sleeps: '/sleep-service/sleep/dailySleep?date={date}',
+  hrv: '/hrv-service/hrv/{date}',
+  heartrate: '/wellness-service/wellness/dailyHeartRate?date={date}',
+  activities: '/activitylist-service/activities/search/activities?startDate={date}&endDate={date}'
 };
 var GARMIN_TOKEN_CACHE_KEY = 'GARMIN_BEARER_TOKEN';
 
@@ -73,11 +74,18 @@ function syncGarminData(days) {
     collectGarmin_(summary, 'hrv', token, win, function (items) {
       items.forEach(function (h) { mergeMetric_(metricsByDate, mapGarminHrv_(h, date)); });
     });
-    // Optionaler eigener Herzfrequenz-Endpunkt (Script Property GARMIN_PATH_HEARTRATE, z. B.
-    // '/wellness-service/wellness/dailyHeartRate?date={date}') – nur abfragen, wenn konfiguriert
-    if (getProp_('GARMIN_PATH_HEARTRATE')) {
+    // Eigener Herzfrequenz-Endpunkt (/wellness-service/wellness/dailyHeartRate?date={date})
+    // wird automatisch abgefragt, falls dailies noch keinen Ruhepuls geliefert hat
+    // (z. B. wenn GARMIN_PATH_DAILIES auf bodyBattery/reports/daily zeigt) oder GARMIN_PATH_HEARTRATE gesetzt ist.
+    var dayMetric = metricsByDate[date];
+    var hasDailyRhr = dayMetric && toNumber_(dayMetric.Resting_HR) !== null;
+    if (!hasDailyRhr || getProp_('GARMIN_PATH_HEARTRATE')) {
       collectGarmin_(summary, 'heartrate', token, win, function (items) {
-        items.forEach(function (hr) { mergeMetric_(metricsByDate, { Date: pickDate_(hr, date), _Resting_HR_Fallback: extractRestingHr_(hr) }); });
+        items.forEach(function (hr) {
+          var d = pickDate_(hr, date);
+          var rhr = extractRestingHr_(hr);
+          mergeMetric_(metricsByDate, { Date: d, Resting_HR: rhr, _Resting_HR_Fallback: rhr });
+        });
       });
     }
     collectGarmin_(summary, 'activities', token, win, function (items) {
@@ -145,7 +153,7 @@ function installDailyGarminTrigger() {
 function debugGarminRestingHr() {
   var token = getGarminBearerToken_();
   var today = todayIso_();
-  var kinds = ['dailies', 'sleeps'].concat(getProp_('GARMIN_PATH_HEARTRATE') ? ['heartrate'] : []);
+  var kinds = ['dailies', 'sleeps', 'heartrate'];
   [addDaysIso_(today, -1), today].forEach(function (date) {
     var win = dayWindowSeconds_(date);
     kinds.forEach(function (kind) {
@@ -177,7 +185,7 @@ function getGarminBearerToken_() {
 
   var res = UrlFetchApp.fetch(GARMIN_TOKEN_URL, {
     method: 'post',
-    headers: { Authorization: 'ApiKey ' + apiKey, Accept: 'application/json' },
+    headers: { Authorization: 'ApiKey ' + apiKey, Accept: '*/*' },
     muteHttpExceptions: true
   });
   var code = res.getResponseCode();
@@ -223,10 +231,11 @@ function collectGarmin_(summary, kind, token, win, onItems) {
 function garminFetch_(kind, token, win) {
   var base = (getProp_('GARMIN_API_BASE') || GARMIN_DEFAULT_BASE).replace(/\/+$/, '');
   var tpl = getProp_('GARMIN_PATH_' + kind.toUpperCase()) || GARMIN_DEFAULT_PATHS[kind];
+  if (!tpl) return [];
   var url = base + tpl
-    .replace('{start}', String(win.start))
-    .replace('{end}', String(win.end))
-    .replace('{date}', win.date);
+    .replace(/\{start\}/g, String(win.start))
+    .replace(/\{end\}/g, String(win.end))
+    .replace(/\{date\}|\{calendarDate\}|\{startDate\}|\{endDate\}/g, win.date);
 
   var res, code;
   for (var attempt = 0; attempt < 3; attempt++) {
@@ -265,10 +274,31 @@ function garminFetch_(kind, token, win) {
  * ------------------------------------------------------------------------- */
 
 function mapGarminDaily_(d, fallbackDate) {
+  var bbMax = pick_(d, [
+    'bodyBatteryHighestValue',
+    'bodyBattery.maxValue',
+    'maxBodyBattery',
+    'bodyBatteryMax',
+    'bodyBatteryAtWakeTime',
+    'bodyBatteryChargedValue',
+    'bodyBattery.chargedValue',
+    'charged'
+  ]);
+  if (d && Array.isArray(d.bodyBatteryValuesArray) && d.bodyBatteryValuesArray.length) {
+    var arrMax = null;
+    d.bodyBatteryValuesArray.forEach(function (entry) {
+      if (!Array.isArray(entry)) return;
+      var lvl = toNumber_(entry.length >= 3 ? entry[2] : entry[1]);
+      if (lvl !== null && lvl >= 0 && lvl <= 100 && (arrMax === null || lvl > arrMax)) arrMax = lvl;
+    });
+    if (arrMax !== null && (bbMax === null || pick_(d, ['bodyBatteryHighestValue', 'bodyBattery.maxValue', 'maxBodyBattery', 'bodyBatteryMax']) === null)) {
+      bbMax = arrMax;
+    }
+  }
   return {
     Date: pickDate_(d, fallbackDate),
     Resting_HR: extractRestingHr_(d),
-    Body_Battery_Max: pick_(d, ['bodyBatteryHighestValue', 'bodyBatteryChargedValue', 'maxBodyBattery', 'bodyBatteryMax'])
+    Body_Battery_Max: bbMax
   };
 }
 
@@ -289,14 +319,16 @@ function mapGarminHrv_(h, fallbackDate) {
 /** Bekannte Feldnamen/Pfade für den Ruhepuls (Health API, Personal API / Connect-Endpunkte). */
 var RESTING_HR_PATHS = [
   'restingHeartRateInBeatsPerMinute', 'restingHeartRate', 'restingHR', 'restingHeartRateValue', 'restingHr',
+  'heartRate.restingValue', 'restingValue',
   'restingHeartRate.value', 'wellnessRestingHeartRate', 'currentDayRestingHeartRate',
   'dailySleepDTO.restingHeartRate', 'heartRate.restingHeartRate', 'values.restingHR', 'values.restingHeartRate',
-  'allMetrics.metricsMap.WELLNESS_RESTING_HEART_RATE.0.value', 'averageRestingHeartRate'
+  'allMetrics.metricsMap.WELLNESS_RESTING_HEART_RATE.0.value', 'averageRestingHeartRate',
+  'lastSevenDaysAvgRestingHeartRate'
 ];
 
 /**
  * Ruhepuls robust aus einer Garmin-Antwort lesen:
- * 1) bekannte Pfade, 2) rekursive Suche nach einem "resting…heart/hr"-Schlüssel
+ * 1) bekannte Pfade, 2) rekursive Suche nach einem "resting…heart/hr/value"-Schlüssel
  * (ohne 7-Tage-Durchschnitte). Werte ≤ 0 (Garmin-Platzhalter) werden ignoriert.
  * @return {number|null}
  */
@@ -313,7 +345,7 @@ function extractRestingHr_(obj) {
     Object.keys(node).forEach(function (k) {
       if (found !== null) return;
       var v = node[k];
-      var isRhrKey = /resting.?(heart|hr)/i.test(k) && !/avg|average|seven|7|last|min|max|zone/i.test(k);
+      var isRhrKey = (/resting.?(heart|hr)/i.test(k) || /^restingValue$/i.test(k)) && !/avg|average|seven|7|last|min|max|zone/i.test(k);
       if (isRhrKey) {
         if (v && typeof v === 'object' && !Array.isArray(v)) found = valid(v.value);
         else found = valid(v);
@@ -413,7 +445,7 @@ function pick_(obj, paths) {
 }
 
 function pickDate_(obj, fallback) {
-  var d = pick_(obj, ['calendarDate', 'date', 'summaryDate']);
+  var d = pick_(obj, ['calendarDate', 'date', 'summaryDate', 'hrvSummary.calendarDate', 'dailySleepDTO.calendarDate']);
   return normalizeDateInput_(d) || fallback;
 }
 
