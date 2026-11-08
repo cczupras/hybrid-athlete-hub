@@ -1,0 +1,59 @@
+name: Deploy Google Apps Script Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'gas-backend/**'
+      - '.github/workflows/deploy-gas.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: gas-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy-gas:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Push & deploy to Google Apps Script
+        working-directory: gas-backend
+        env:
+          CLASP_CREDENTIALS: ${{ secrets.CLASP_CREDENTIALS }}
+          GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
+          GAS_DEPLOYMENT_ID: ${{ secrets.GAS_DEPLOYMENT_ID }}
+        run: |
+          if [ -z "$CLASP_CREDENTIALS" ] || [ -z "$GAS_SCRIPT_ID" ]; then
+            echo "::notice::Überspringe GAS-Deployment: Repository Secrets CLASP_CREDENTIALS und/oder GAS_SCRIPT_ID sind noch nicht hinterlegt."
+            exit 0
+          fi
+
+          umask 077
+          printf '%s\n' "$CLASP_CREDENTIALS" > "$HOME/.clasprc.json"
+          printf '{"scriptId":"%s","rootDir":"."}\n' "$GAS_SCRIPT_ID" > .clasp.json
+
+          echo "Pushing gas-backend/ to Google Apps Script..."
+          npx --yes @google/clasp@2.5.0 push --force
+
+          DEPLOY_ID="$GAS_DEPLOYMENT_ID"
+          if [ -z "$DEPLOY_ID" ]; then
+            DEPLOY_ID=$(npx --yes @google/clasp@2.5.0 deployments | grep -E '^-[[:space:]]+' | grep -v '@HEAD' | tail -n 1 | awk '{print $2}' || true)
+          fi
+
+          DESC="GitHub Actions #${GITHUB_RUN_NUMBER} (${GITHUB_SHA::7})"
+          if [ -n "$DEPLOY_ID" ]; then
+            echo "Updating existing Web App deployment ($DEPLOY_ID)..."
+            npx --yes @google/clasp@2.5.0 deploy --deploymentId "$DEPLOY_ID" --description "$DESC"
+          else
+            echo "Creating new Web App deployment..."
+            npx --yes @google/clasp@2.5.0 deploy --description "$DESC"
+          fi
+

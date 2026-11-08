@@ -14,7 +14,8 @@
 /* ==========================================================================
  *  1) Konstanten
  * ======================================================================= */
-const STORAGE_KEYS = { url: 'GAS_URL', pin: 'APP_PIN', mock: 'MOCK_MODE' };
+const STORAGE_KEYS = { url: 'GAS_URL', pin: 'APP_PIN', mock: 'MOCK_MODE', comments: 'ACTIVITY_COMMENTS' };
+const COMMENT_MARKER = '\n<!--comment-->\n';
 
 const EXERCISES = ['Back Squat', 'Front Squat', 'Deadlift', 'Bench Press', 'Overhead Press', 'Barbell Row', 'Weighted Pull-Up'];
 const EXERCISE_SHORT = {
@@ -109,6 +110,64 @@ const isoWeekNo = (iso) => {
 const sortByDateDesc = (rows) => rows.slice().reverse().sort((a, b) => (a.Date < b.Date ? 1 : a.Date > b.Date ? -1 : 0));
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now().toString(36) + Math.random().toString(36).slice(2));
 const vibrate = (ms = 8) => { try { navigator.vibrate && navigator.vibrate(ms); } catch (_) { /* ignore */ } };
+
+function packNotesAndComment(notes, comment) {
+  const title = String(notes ?? '').replace(/[\r\n]+/g, ' ').trim();
+  const body = String(comment ?? '').replace(/\r\n?/g, '\n').trim();
+  return body ? `${title}${COMMENT_MARKER}${body}` : title;
+}
+
+function unpackNotesAndComment(notes, comment) {
+  const rawNotes = String(notes ?? '');
+  const rawComment = String(comment ?? '');
+  const idx = rawNotes.indexOf(COMMENT_MARKER);
+  if (idx === -1) return { notes: rawNotes, comment: rawComment };
+  const title = rawNotes.slice(0, idx);
+  const embedded = rawNotes.slice(idx + COMMENT_MARKER.length);
+  return { notes: title, comment: rawComment || embedded };
+}
+
+function getActivityOverrides() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.comments);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveActivityOverride(activityId, patch) {
+  if (!activityId) return;
+  try {
+    const all = getActivityOverrides();
+    const key = String(activityId);
+    all[key] = { ...(all[key] || {}), ...patch, updatedAt: Date.now() };
+    localStorage.setItem(STORAGE_KEYS.comments, JSON.stringify(all));
+  } catch (_) { /* ignore storage quota errors */ }
+}
+
+function normalizeActivity(a, applyMockFields = false) {
+  const unpacked = unpackNotesAndComment(a.Notes, a.Comment);
+  const stored = getActivityOverrides()[String(a.Activity_ID)];
+  let notes = unpacked.notes;
+  let comment = unpacked.comment;
+  if (stored) {
+    if (stored.comment !== undefined) {
+      if (!comment || stored.comment === '' || (stored.comment.length > comment.length && stored.comment.startsWith(comment))) {
+        comment = String(stored.comment);
+      }
+    }
+    if (stored.notes !== undefined && (!notes || applyMockFields)) notes = String(stored.notes);
+  }
+  const out = { ...a, Notes: notes, Comment: comment };
+  if (applyMockFields && stored) {
+    if (stored.bucket) out.Bucket = stored.bucket;
+    if (stored.rpe) out.RPE = Number(stored.rpe);
+    if (stored.muscleFocus) out.Muscle_Focus = stored.muscleFocus;
+  }
+  return out;
+}
 
 /* ==========================================================================
  *  3) Analytics (identisch zur Logik in gas-backend/Code.gs)
@@ -335,7 +394,13 @@ function buildMockDb() {
 
 const MockBackend = {
   db: null,
-  ensure() { if (!this.db) this.db = buildMockDb(); return this.db; },
+  ensure() {
+    if (!this.db) {
+      this.db = buildMockDb();
+      this.db.activities = this.db.activities.map((a) => normalizeActivity(a, true));
+    }
+    return this.db;
+  },
 
   async handle(action, data = {}) {
     const db = this.ensure();
@@ -621,8 +686,9 @@ const state = {
 /** Normalisiert die Backend-Antwort und berechnet abgeleitete Kennzahlen. */
 function buildDerived(raw) {
   const today = todayIso();
+  const mock = isMockMode();
   const metrics = (raw.dailyMetrics || []).filter((m) => m.Date).sort((a, b) => (a.Date < b.Date ? -1 : 1));
-  const activities = sortByDateDesc((raw.activities || []).filter((a) => a.Activity_ID));
+  const activities = sortByDateDesc((raw.activities || []).filter((a) => a.Activity_ID).map((a) => normalizeActivity(a, mock)));
   const strength = sortByDateDesc((raw.strengthLog || []).filter((s) => s.Exercise));
   return {
     today, metrics, activities, strength,
@@ -1159,23 +1225,52 @@ function renderActivityModal() {
 async function saveActivityTag(id, btn) {
   syncDraftInputs();
   const d = state.draft;
-  if (!d.bucket || !d.rpe || !d.focus) { toast('Bitte Bucket, RPE und Muscle Focus wählen.', 'error'); return; }
+  const existing = state.derived?.activities.find((x) => String(x.Activity_ID) === String(id));
+  const commentChanged = String(d.comment ?? '') !== String(existing?.Comment ?? '');
+  const notesChanged = String(d.notes ?? '') !== String(existing?.Notes ?? '');
+  if ((!d.bucket || !d.rpe || !d.focus) && !commentChanged && !notesChanged) {
+    toast('Bitte Bucket, RPE und Muscle Focus wählen.', 'error');
+    return;
+  }
   btn.disabled = true;
   btn.textContent = 'Speichere…';
   try {
     const res = await api('tagActivity', {
       activityId: String(id),
-      bucket: d.bucket,
-      rpe: d.rpe,
-      muscleFocus: d.focus,
+      bucket: d.bucket || '',
+      rpe: d.rpe ?? '',
+      muscleFocus: d.focus || '',
       notes: d.notes,
       comment: d.comment
     });
-    const updated = res.activity || {};
+    let updated = res.activity || {};
+    // Fallback für ältere GAS-Deployments ohne eigene Comment-Spalte:
+    // Kommentar zusammen mit dem Kurztitel im Notes-Feld des Google Sheets persistieren.
+    if (!isMockMode() && !('Comment' in updated)) {
+      const packedNotes = packNotesAndComment(d.notes, d.comment);
+      if (packedNotes !== String(d.notes ?? '') || String(updated.Notes ?? '').includes(COMMENT_MARKER)) {
+        const fallbackRes = await api('tagActivity', { activityId: String(id), notes: packedNotes });
+        if (fallbackRes?.activity) updated = fallbackRes.activity;
+      }
+    }
+    saveActivityOverride(id, {
+      bucket: d.bucket || existing?.Bucket || '',
+      rpe: d.rpe ?? existing?.RPE ?? '',
+      muscleFocus: d.focus || existing?.Muscle_Focus || '',
+      notes: d.notes,
+      comment: d.comment
+    });
+    const merged = normalizeActivity({
+      ...(existing || {}),
+      ...updated,
+      Bucket: d.bucket || updated.Bucket || existing?.Bucket || '',
+      RPE: d.rpe ?? updated.RPE ?? existing?.RPE ?? '',
+      Muscle_Focus: d.focus || updated.Muscle_Focus || existing?.Muscle_Focus || '',
+      Notes: d.notes,
+      Comment: d.comment
+    }, isMockMode());
     state.data.activities = (state.data.activities || []).map((a) => (
-      String(a.Activity_ID) === String(id)
-        ? { ...a, ...updated, Bucket: d.bucket, RPE: d.rpe, Muscle_Focus: d.focus, Notes: d.notes, Comment: d.comment }
-        : a
+      String(a.Activity_ID) === String(id) ? merged : a
     ));
     state.derived = buildDerived(state.data);
     vibrate(12);

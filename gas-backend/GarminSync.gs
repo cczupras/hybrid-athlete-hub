@@ -33,7 +33,7 @@ var GARMIN_DEFAULT_PATHS = {
 var GARMIN_TOKEN_CACHE_KEY = 'GARMIN_BEARER_TOKEN';
 
 /** Felder, die beim Re-Sync nicht überschrieben werden, wenn sie bereits (manuell) gepflegt wurden. */
-var GARMIN_PRESERVE_FIELDS = ['Bucket', 'Type', 'RPE', 'Muscle_Focus', 'Notes', 'Source'];
+var GARMIN_PRESERVE_FIELDS = ['Bucket', 'Type', 'RPE', 'Muscle_Focus', 'Notes', 'Comment', 'Source'];
 
 /**
  * Haupteinstieg: synchronisiert die letzten `days` Tage (Default 3).
