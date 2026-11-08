@@ -7,7 +7,7 @@
  */
 'use strict';
 
-const CACHE_NAME = 'hybrid-athlete-hub-v2';
+const CACHE_NAME = 'hybrid-athlete-hub-v3';
 const APP_SHELL = [
   './',
   './index.html',

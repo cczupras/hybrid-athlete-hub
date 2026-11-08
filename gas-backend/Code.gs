@@ -69,6 +69,7 @@ var EXERCISE_FOCUS = {
 
 /** Mapping Wochenziel-Metrik -> Bucket. */
 var TARGET_BUCKETS = { Engine_Weekly: 'Engine', Heavy_Weekly: 'Heavy', Metcon_Weekly: 'Metcon' };
+var COMMENT_MARKER = '\n<!--comment-->\n';
 
 /* ----------------------------------------------------------------------------
  *  HTTP Entry Points
@@ -329,16 +330,24 @@ function handleTagActivity_(data) {
   var comment = data.comment !== undefined ? data.comment : data.Comment;
   var type = data.type !== undefined ? data.type : data.Type;
 
-  if (bucket !== undefined && bucket !== '') patch.Bucket = requireEnum_(bucket, ENUMS.Bucket, 'bucket');
-  if (focus !== undefined && focus !== '') patch.Muscle_Focus = requireEnum_(focus, ENUMS.Muscle_Focus, 'muscleFocus');
-  if (type !== undefined && type !== '') patch.Type = requireEnum_(type, ENUMS.Type, 'type');
-  if (rpe !== undefined && rpe !== '') {
+  if (bucket !== undefined && bucket !== '' && bucket !== null) patch.Bucket = requireEnum_(bucket, ENUMS.Bucket, 'bucket');
+  if (focus !== undefined && focus !== '' && focus !== null) patch.Muscle_Focus = requireEnum_(focus, ENUMS.Muscle_Focus, 'muscleFocus');
+  if (type !== undefined && type !== '' && type !== null) patch.Type = requireEnum_(type, ENUMS.Type, 'type');
+  if (rpe !== undefined && rpe !== '' && rpe !== null) {
     var r = toNumber_(rpe);
     if (r === null || r < 1 || r > 10) throw apiError_('RPE muss zwischen 1 und 10 liegen.', 400);
     patch.RPE = Math.round(r);
   }
-  if (notes !== undefined) patch.Notes = String(notes).replace(/[\r\n]+/g, ' ').slice(0, 500);
-  if (comment !== undefined) {
+  if (notes !== undefined && notes !== null) {
+    var rawNotes = String(notes);
+    var markerIdx = rawNotes.indexOf(COMMENT_MARKER);
+    if (markerIdx >= 0) {
+      if (comment === undefined) comment = rawNotes.slice(markerIdx + COMMENT_MARKER.length);
+      rawNotes = rawNotes.slice(0, markerIdx);
+    }
+    patch.Notes = rawNotes.replace(/[\r\n]+/g, ' ').slice(0, 500);
+  }
+  if (comment !== undefined && comment !== null) {
     // Mehrzeiliger Markdown-Kommentar; Zeilenumbrüche normalisieren, Zell-Limit großzügig begrenzen
     patch.Comment = String(comment).replace(/\r\n?/g, '\n').slice(0, 5000);
     ensureSchemaHeaders_('Activities');
@@ -358,8 +367,10 @@ function handleTagActivity_(data) {
 function ensureSchemaHeaders_(name) {
   var sheet = getSheet_(name);
   var headers = SCHEMA[name];
+  var changed = false;
   if (sheet.getMaxColumns() < headers.length) {
     sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
+    changed = true;
   }
   var current = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
   headers.forEach(function (h, i) {
@@ -368,7 +379,9 @@ function ensureSchemaHeaders_(name) {
     if ((TEXT_COLUMNS[name] || []).indexOf(h) >= 0) {
       sheet.getRange(2, i + 1, Math.max(sheet.getMaxRows() - 1, 1), 1).setNumberFormat('@');
     }
+    changed = true;
   });
+  if (changed) SpreadsheetApp.flush();
 }
 
 /**
@@ -461,6 +474,16 @@ function readObjects_(name) {
       if (!headers[c]) continue;
       obj[headers[c]] = normalizeCell_(row[c], headers[c]);
     }
+    if (name === 'Activities') {
+      var rawNotes = String(obj.Notes === undefined || obj.Notes === null ? '' : obj.Notes);
+      var rawComment = String(obj.Comment === undefined || obj.Comment === null ? '' : obj.Comment);
+      var idx = rawNotes.indexOf(COMMENT_MARKER);
+      if (idx >= 0) {
+        obj.Notes = rawNotes.slice(0, idx);
+        if (!rawComment) rawComment = rawNotes.slice(idx + COMMENT_MARKER.length);
+      }
+      obj.Comment = rawComment;
+    }
     out.push(obj);
   }
   return out;
@@ -483,9 +506,15 @@ function objectToRow_(name, obj) {
 }
 
 function appendObject_(name, obj) {
+  ensureSchemaHeaders_(name);
   var sheet = getSheet_(name);
   var row = objectToRow_(name, obj);
-  sheet.getRange(sheet.getLastRow() + 1, 1, 1, row.length).setValues([row]);
+  var targetRow = sheet.getLastRow() + 1;
+  (TEXT_COLUMNS[name] || []).forEach(function (col) {
+    var c = SCHEMA[name].indexOf(col) + 1;
+    if (c > 0) sheet.getRange(targetRow, c).setNumberFormat('@');
+  });
+  sheet.getRange(targetRow, 1, 1, row.length).setValues([row]);
   return obj;
 }
 
@@ -494,6 +523,7 @@ function appendObject_(name, obj) {
  * @return {Object|null} aktualisiertes Objekt oder null, wenn nicht gefunden.
  */
 function updateObjectByKey_(name, key, patch) {
+  ensureSchemaHeaders_(name);
   var sheet = getSheet_(name);
   var headers = SCHEMA[name];
   var keyField = SHEET_KEYS[name];
@@ -511,7 +541,12 @@ function updateObjectByKey_(name, key, patch) {
       var c = headers.indexOf(field);
       if (c >= 0) row[c] = patch[field];
     });
-    sheet.getRange(i + 2, 1, 1, headers.length).setValues([row]);
+    var rowNum = i + 2;
+    (TEXT_COLUMNS[name] || []).forEach(function (col) {
+      var c = headers.indexOf(col) + 1;
+      if (c > 0 && patch.hasOwnProperty(col)) sheet.getRange(rowNum, c).setNumberFormat('@');
+    });
+    sheet.getRange(rowNum, 1, 1, headers.length).setValues([row]);
     var obj = {};
     headers.forEach(function (h, c) { obj[h] = row[c]; });
     return obj;
@@ -528,6 +563,7 @@ function updateObjectByKey_(name, key, patch) {
  * @return {{inserted:number, updated:number, unchanged:number}}
  */
 function upsertObjects_(name, objects, options) {
+  ensureSchemaHeaders_(name);
   options = options || {};
   var preserve = options.preserveIfSet || [];
   var sheet = getSheet_(name);

@@ -96,7 +96,23 @@ Damit deine Schlaf-, HRV-, Ruhepuls- und Aktivitätsdaten jeden Morgen automatis
 4. Klicke auf **Bereitstellen** und kopiere die **Web-App-URL** (Format: `https://script.google.com/macros/s/.../exec`).
 
 > **⚠️ Wichtig bei späteren Code-Änderungen in Apps Script:**
-> Klicke nach Änderungen im `.gs`-Code immer auf **Bereitstellen → Bereitstellungen verwalten → Stift-Icon (Bearbeiten) → Version: „Neue Version“ → Bereitstellen**, damit die bestehende Web-App-URL den neuen Code ausführt.
+> Klicke nach manuellen Änderungen im `.gs`-Code immer auf **Bereitstellen → Bereitstellungen verwalten → Stift-Icon (Bearbeiten) → Version: „Neue Version“ → Bereitstellen**, damit die bestehende Web-App-URL den neuen Code ausführt – oder richte das **automatische GitHub-Actions-Deployment** (siehe Schritt 5b) ein.
+
+---
+
+### Schritt 5b: Optional – Automatisches Backend-Deployment via GitHub Actions (`clasp`)
+Der Workflow `.github/workflows/deploy-gas.yml` aktualisiert bei jedem Push auf `main` (sobald sich Dateien in `gas-backend/` ändern) automatisch dein Google Apps Script **und** deine bestehende Web-App-Bereitstellung, sodass die `GAS_URL` unverändert bleibt:
+
+1. **Apps Script API aktivieren:** Öffne [script.google.com/home/usersettings](https://script.google.com/home/usersettings) und schalte **Google Apps Script API** auf **An**.
+2. **Einmalig lokal einloggen (`~/.clasprc.json` erzeugen):**
+   ```bash
+   npx @google/clasp@2.5.0 login
+   ```
+   Nach dem Login im Browser liegt in deinem Benutzerordner die Datei `~/.clasprc.json` (Windows: `C:\Users\<Name>\.clasprc.json`).
+3. **GitHub Repository Secrets anlegen** (*GitHub Repo → Settings → Secrets and variables → Actions → New repository secret*):
+   - **`CLASP_CREDENTIALS`**: Kompletter JSON-Inhalt deiner lokalen `.clasprc.json`.
+   - **`GAS_SCRIPT_ID`**: Deine **Skript-ID** aus dem Apps-Script-Editor (*Projekteinstellungen → IDs → Skript-ID*).
+   - **`GAS_DEPLOYMENT_ID`** *(optional)*: Die Bereitstellungs-ID deiner Web-App (*Bereitstellen → Bereitstellungen verwalten → Bereitstellungs-ID*, beginnt mit `AKfyc...`). Falls leer, aktualisiert der Workflow automatisch die zuletzt angelegte Web-App-Bereitstellung.
 
 ---
 
