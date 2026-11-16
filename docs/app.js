@@ -688,7 +688,11 @@ function buildDerived(raw) {
   const today = todayIso();
   const mock = isMockMode();
   const metrics = (raw.dailyMetrics || []).filter((m) => m.Date).sort((a, b) => (a.Date < b.Date ? -1 : 1));
-  const activities = sortByDateDesc((raw.activities || []).filter((a) => a.Activity_ID).map((a) => normalizeActivity(a, mock)));
+  const activitiesById = new Map();
+  (raw.activities || []).filter((a) => a.Activity_ID).forEach((a) => {
+    activitiesById.set(String(a.Activity_ID), normalizeActivity(a, mock));
+  });
+  const activities = sortByDateDesc(Array.from(activitiesById.values()));
   const strength = sortByDateDesc((raw.strengthLog || []).filter((s) => s.Exercise));
   return {
     today, metrics, activities, strength,
