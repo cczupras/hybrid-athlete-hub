@@ -251,7 +251,7 @@ function handleGetDashboard_(data) {
     .filter(function (r) { return r.Date && r.Date >= cutoff; })
     .sort(function (a, b) { return a.Date < b.Date ? -1 : a.Date > b.Date ? 1 : 0; });
 
-  var activities = sortByDateDesc_(readObjects_('Activities').filter(function (r) { return r.Activity_ID; }));
+  var activities = sortByDateDesc_(reconcileDashboardActivities_(readObjects_('Activities')));
   var strengthAll = sortByDateDesc_(readObjects_('Strength_Log').filter(function (r) { return r.Log_ID; }));
   var targets = readObjects_('Config_Targets').filter(function (r) { return r.Metric; });
 
@@ -268,6 +268,28 @@ function handleGetDashboard_(data) {
       fatigue48h: computeFatigue48h_(activities, today)
     }
   };
+}
+
+function reconcileDashboardActivities_(rows) {
+  var byId = new Map();
+  rows.forEach(function (row) {
+    var id = normalizeKey_(row.Activity_ID, 'Activity_ID');
+    if (!id) return;
+    var first = byId.has(id) ? byId.get(id).first : row;
+    byId.delete(id);
+    byId.set(id, { first: first, last: row });
+  });
+  return Array.from(byId.values()).map(function (pair) {
+    var activity = Object.assign({}, pair.last);
+    // Tags update the first sheet row; Garmin upserts update the last one.
+    ['Source', 'Bucket', 'Type', 'RPE', 'Muscle_Focus', 'Notes', 'Comment'].forEach(function (field) {
+      var value = pair.first[field];
+      if (value !== undefined && value !== null &&
+          (value !== '' || field === 'Notes' || field === 'Comment')) activity[field] = value;
+    });
+    if (activity.Source === 'Manual') activity.Duration_Min = pair.first.Duration_Min;
+    return activity;
+  });
 }
 
 /** logStrength: hängt einen Satz-Block an und verknüpft/erstellt die Rack_Strength-Aktivität des Tages. */
